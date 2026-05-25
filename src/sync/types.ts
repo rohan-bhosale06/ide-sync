@@ -4,6 +4,24 @@ import type { IDEFamily } from '../detectors/types.js';
 
 export type ConflictPolicy = 'newest' | 'local' | 'remote' | 'manual';
 
+export interface DaemonNotificationConfig {
+  enabled: boolean;
+  onSync: boolean;
+  onConflict: boolean;
+  onError: boolean;
+}
+
+export interface DaemonConfig {
+  enabled: boolean;
+  debounceMs: number;
+  maxDebounceMs: number;
+  periodicPullCron: string;
+  pausedUntil: string | null;
+  autoApplyLargeChanges: boolean;
+  largeChangeThresholdPercent: number;
+  notifications: DaemonNotificationConfig;
+}
+
 export interface Config {
   deviceId: string;
   deviceName: string;
@@ -12,6 +30,7 @@ export interface Config {
   filesystemPath?: string;
   conflictPolicy: ConflictPolicy;
   tombstoneGCDays: number;
+  daemon?: DaemonConfig;
 }
 
 // ─────────────────────────── sync state ──────────────────────────

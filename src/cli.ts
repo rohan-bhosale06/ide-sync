@@ -9,10 +9,23 @@ import { pullCommand } from './commands/pull.js';
 import { syncCommand } from './commands/sync-cmd.js';
 import { statusCommand } from './commands/status.js';
 import { devicesListCommand, devicesRemoveCommand } from './commands/devices.js';
+import {
+  daemonStartCommand,
+  daemonStopCommand,
+  daemonRestartCommand,
+  daemonStatusCommand,
+  daemonLogsCommand,
+  daemonSyncNowCommand,
+  daemonPauseCommand,
+  daemonResumeCommand,
+  daemonInstallCommand,
+  daemonUninstallCommand,
+} from './commands/daemon.js';
+import { watchCommand } from './commands/watch.js';
 
 const program = new Command();
 
-program.name('ide-sync').description('Sync extensions across VS Code-family IDEs').version('0.3.0');
+program.name('ide-sync').description('Sync extensions across VS Code-family IDEs').version('0.4.0');
 
 // ── scan ──────────────────────────────────────────────────────────
 program
@@ -177,12 +190,102 @@ devicesCmd
     });
   });
 
-// Make `ide-sync devices` without a subcommand show list.
 devicesCmd.action(() => {
   devicesListCommand().catch((err) => {
     console.error(err);
     process.exit(1);
   });
 });
+
+// ── daemon ────────────────────────────────────────────────────────
+const daemonCmd = program
+  .command('daemon')
+  .description('Manage the background sync daemon');
+
+daemonCmd
+  .command('start')
+  .description('Start the daemon in the background')
+  .action(() => {
+    daemonStartCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('stop')
+  .description('Gracefully stop the running daemon')
+  .action(() => {
+    daemonStopCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('restart')
+  .description('Stop then start the daemon')
+  .action(() => {
+    daemonRestartCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('status')
+  .description('Show live daemon status (via IPC)')
+  .action(() => {
+    daemonStatusCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('logs')
+  .description('Tail the daemon log file')
+  .option('--since <duration>', 'Only show logs from last N seconds/minutes/hours (e.g. 30s, 5m, 1h)')
+  .action((opts) => {
+    daemonLogsCommand(opts).catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('sync-now')
+  .description('Ask the running daemon to sync immediately')
+  .action(() => {
+    daemonSyncNowCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('pause')
+  .description('Pause auto-sync (watchers keep observing, no jobs fire)')
+  .action(() => {
+    daemonPauseCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('resume')
+  .description('Resume auto-sync after a pause')
+  .action(() => {
+    daemonResumeCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('install')
+  .description('Register daemon as an OS login service (auto-start at login)')
+  .action(() => {
+    daemonInstallCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+daemonCmd
+  .command('uninstall')
+  .description('Remove the OS login service entry')
+  .action(() => {
+    daemonUninstallCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+// Default `ide-sync daemon` with no subcommand → show status.
+daemonCmd.action(() => {
+  daemonStatusCommand().catch((err) => { console.error(err); process.exit(1); });
+});
+
+// ── watch ─────────────────────────────────────────────────────────
+program
+  .command('watch')
+  .description('Foreground watcher — same engine as the daemon, logs to stdout (Ctrl+C to stop)')
+  .option('--ide <list>', 'Comma-separated IDEs to watch (default: all detected)')
+  .option('--verbose', 'Show debug-level log output', false)
+  .action((opts) => {
+    watchCommand(opts).catch((err) => { console.error(err); process.exit(1); });
+  });
 
 program.parse();

@@ -1,11 +1,30 @@
 import fs from 'fs';
 import { resolveHome } from '../utils/paths.js';
 import { migrateSyncState } from '../sync/state.js';
-import type { Config, SyncState } from '../sync/types.js';
+import type { Config, DaemonConfig, SyncState } from '../sync/types.js';
 
 const CONFIG_DIR = resolveHome('.ide-sync');
 const CONFIG_FILE = resolveHome('.ide-sync', 'config.json');
 export const LAST_SYNCED_FILE = resolveHome('.ide-sync', 'last-synced-state.json');
+export const DAEMON_PID_FILE = resolveHome('.ide-sync', 'daemon.pid');
+export const DAEMON_SOCK_FILE = resolveHome('.ide-sync', 'daemon.sock');
+export const DAEMON_LOG_DIR = resolveHome('.ide-sync', 'logs');
+
+export const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
+  enabled: true,
+  debounceMs: 10_000,
+  maxDebounceMs: 60_000,
+  periodicPullCron: '*/5 * * * *',
+  pausedUntil: null,
+  autoApplyLargeChanges: false,
+  largeChangeThresholdPercent: 50,
+  notifications: {
+    enabled: true,
+    onSync: false,
+    onConflict: true,
+    onError: true,
+  },
+};
 
 export function configExists(): boolean {
   return fs.existsSync(CONFIG_FILE);
@@ -25,6 +44,16 @@ export function readConfig(): Config {
 export function writeConfig(config: Config): void {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+}
+
+export function getDaemonConfig(config: Config): DaemonConfig {
+  return { ...DEFAULT_DAEMON_CONFIG, ...config.daemon };
+}
+
+export function writeDaemonConfig(daemonCfg: Partial<DaemonConfig>): void {
+  const config = readConfig();
+  config.daemon = { ...DEFAULT_DAEMON_CONFIG, ...config.daemon, ...daemonCfg };
+  writeConfig(config);
 }
 
 export function readLastSyncedState(): SyncState | null {
