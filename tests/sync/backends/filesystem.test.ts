@@ -74,7 +74,7 @@ describe('FilesystemBackend', () => {
     const read = await backend.readState();
     expect(read).not.toBeNull();
     expect(read?.extensions['ext.a'].desiredVersion).toBe('1.0.0');
-    expect(read?.schemaVersion).toBe(1);
+    expect(read?.schemaVersion).toBe(2);
   });
 
   it('writeState overwrites previous state', async () => {

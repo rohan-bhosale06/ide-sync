@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { readConfig, readLastSyncedState, writeLastSyncedState } from '../config/config.js';
+import { readConfig, readLastSyncedState, writeLastSyncedState, readConfigSyncConfig } from '../config/config.js';
 import { runDetectors, ALL_FAMILIES } from '../detectors/index.js';
 import type { IDEFamily } from '../detectors/types.js';
 import { buildInstalledSet, hashState } from '../sync/state.js';
@@ -9,6 +9,7 @@ import { formatConflictReport, hasUnresolvedConflicts } from '../sync/conflict.j
 import { createBackend, PushConflictError } from '../sync/backends/index.js';
 import { acquireLock } from '../utils/lock.js';
 import type { MergePlan } from '../sync/types.js';
+import { configPush } from '../config-sync/engine.js';
 
 export interface PushOptions {
   ide?: string;
@@ -83,7 +84,26 @@ export async function runPush(opts: PushOptions = {}): Promise<PushResult> {
       return { ok: true, pushed: 0, conflicts: plan.conflicts.length, skipped: 'dry-run', plan };
     }
 
-    const newState = applyRemotePlan(remote, plan, config.deviceId, config.deviceName);
+    let newState = applyRemotePlan(remote, plan, config.deviceId, config.deviceName);
+
+    // Phase 5: config-domain push (if any domains enabled).
+    const configSyncCfg = readConfigSyncConfig();
+    if (configSyncCfg.enabledDomains.length > 0) {
+      const inventoriesForConfig = runDetectors(families);
+      const sourceIDE = inventoriesForConfig.find((inv) => inv.ide.installed && inv.ide.configPath)?.ide;
+      if (sourceIDE) {
+        const configResult = await configPush({
+          sourceIDE,
+          cfg: configSyncCfg,
+          baseState: base,
+          remoteState: newState,
+          deviceId: config.deviceId,
+          policy: conflictPolicy,
+        });
+        newState = { ...newState, configs: configResult.updatedConfigs, domainOptOuts: configResult.updatedDomainOptOuts };
+      }
+    }
+
     const newHash = hashState(newState);
     const stampedState = stampDevice(newState, config.deviceId, config.deviceName, newHash);
 

@@ -1,8 +1,8 @@
 # ide-sync
 
-A CLI tool to scan, compare, and sync extensions across VS Code-family IDEs — locally and across multiple machines, with a background daemon that makes it fully automatic.
+A CLI tool to scan, compare, and sync extensions **and full IDE configuration** across VS Code-family IDEs — locally and across multiple machines, with a background daemon that makes it fully automatic.
 
-**Phase 4 of 5** — background daemon with file watching, debounced auto-sync, IPC status, and OS service integration.
+**Phase 5 of 5 complete** — settings, keybindings, snippets, tasks, MCP config, and UI state sync with comment-preserving 3-way merge, fork-translation engine, and automatic backup.
 
 ## Supported IDEs
 
@@ -410,6 +410,163 @@ VSIX files are cached at `~/.ide-sync/cache/vsix/`.
 
 ---
 
+## Phase 5: Config Sync
+
+Phase 5 extends sync from extensions to the full IDE configuration surface. "My extensions follow me" becomes "my entire dev environment follows me."
+
+### What gets synced
+
+| Domain | Files | Merge strategy |
+|---|---|---|
+| `settings` | `settings.json` | Key-level 3-way merge, JSONC comments preserved |
+| `keybindings` | `keybindings.json` | Array merge by `(key, command, when)` identity |
+| `snippets` | `snippets/*.json`, `*.code-snippets` | Per-file 3-way merge + add/remove tracking |
+| `tasks` | `tasks.json` | Key-level 3-way merge |
+| `mcp` | `mcp.json` / `.mcp.json` | Key-level 3-way merge |
+| `ui-state` | `globalStorage/storage.json` (subset) | Whitelist-only, last-write-wins |
+
+**All domains are opt-in.** On first upgrade, nothing is synced until you explicitly enable domains. Extension sync (Phases 1–4) continues unchanged.
+
+### Getting started
+
+```bash
+# See what's currently enabled
+ide-sync config list
+
+# Enable specific domains
+ide-sync config enable settings
+ide-sync config enable keybindings
+ide-sync config enable snippets
+
+# Opt a single IDE out of keybindings sync (your keybindings are very personal)
+ide-sync config disable keybindings --ide cursor
+
+# From this point on, push/pull/sync/daemon all include config domains automatically
+ide-sync push
+```
+
+### One-shot local replication
+
+Copy config from one IDE to another without using the remote backend:
+
+```bash
+# All enabled domains
+ide-sync config replicate --from vscode --to cursor
+
+# Specific domains only
+ide-sync config replicate --from vscode --to cursor --domain settings,keybindings
+
+# Preview what would change
+ide-sync config replicate --from vscode --to cursor --dry-run
+```
+
+### Inspecting config state
+
+```bash
+# Print the settings.json captured for VS Code
+ide-sync config show --ide vscode --domain settings
+
+# Diff what would change when translating vscode→cursor locally
+ide-sync config diff --from vscode --to cursor
+
+# Check what's stored on the remote backend
+ide-sync config diff --remote
+```
+
+### Translation system
+
+VS Code forks disagree on some settings keys. The translator handles three cases:
+
+| Behavior | Example |
+|---|---|
+| **Passthrough** (default) | `editor.fontSize` — identical across all forks |
+| **Quarantine** | `cursor.*` dropped when writing to VS Code; `github.copilot.*` dropped when writing to Cursor |
+| **Map** | Explicit key rename for forks that renamed a shared key |
+
+Quarantined key prefixes (always dropped):
+- `cursor.*`, `windsurf.*`, `codeium.*`, `vscodium.*` — fork-specific namespaces
+- `github.copilot.*` — irrelevant in IDEs with built-in AI
+- `telemetry.*`, `update.*`, `extensions.autoUpdate` — per-machine preferences
+
+To add custom translation overrides, set `translationOverrides` in `~/.ide-sync/config-sync.json`:
+
+```json
+{
+  "translationOverrides": {
+    "cursor.someRenamedKey": "editor.originalKey",
+    "my.private.key": null
+  }
+}
+```
+
+A value of `null` quarantines the key. A string value renames it.
+
+### Comment preservation
+
+**Comments in your settings files are never lost.** The merger uses `jsonc-parser`'s `modify()` + `applyEdits()` to perform surgical character-level edits — it never round-trips through `JSON.parse`/`JSON.stringify`.
+
+```jsonc
+{
+  // My preferred font — keep this in sync
+  "editor.fontSize": 16,   // baseline
+  "editor.tabSize": 2
+}
+```
+
+If a remote device changes `editor.tabSize` to `4`, the merger applies exactly `"editor.tabSize": 4` as a targeted edit. Every other character in the file — including the comments — is preserved verbatim.
+
+### Backup and restore
+
+Every write to an IDE config file is preceded by an automatic backup. You can also snapshot manually:
+
+```bash
+# Snapshot all IDE configs now
+ide-sync config backup
+
+# List available backups (newest first)
+ide-sync config backups
+
+# Restore a specific backup
+ide-sync config restore 2026-05-26T10-30-00-000Z-config-sync
+
+# Restore only for one IDE
+ide-sync config restore 2026-05-26T10-30-00-000Z-config-sync --ide cursor
+```
+
+Backups live in `~/.ide-sync/backups/`. Auto-pruning keeps at least the last 20 regardless of age, and deletes entries older than 30 days.
+
+### UI-state sync
+
+`ui-state` is **always opt-in** (even if globally enabled) and syncs only a conservative whitelist of keys from `globalStorage/storage.json`. Most of that file is per-machine state (window positions, recent file lists) that you do **not** want synced.
+
+Default whitelist:
+- `workbench.activityBar.pinnedViewlets`
+- `workbench.welcome.experimental.hidden`
+- `workbench.colorTheme`
+- `workbench.iconTheme`
+- `workbench.productIconTheme`
+
+Add extra keys via `uiStateWhitelistExtra` in `~/.ide-sync/config-sync.json`.
+
+### Schema migration (v1 → v2)
+
+Phase 5 bumps the sync-state schema from v1 to v2. Migration happens automatically on the first push/pull after upgrading. The old state is preserved as `last-synced-state.json.v1.bak`.
+
+If you have multiple machines, upgrade them before pushing from a v2 device. If a v2 device detects v1 state from another active device, it will refuse to push and print the device IDs that need upgrading:
+
+```
+Older device detected: laptop-abc (last synced 2h ago).
+Upgrade it to ide-sync v0.5.0+ before pushing config state.
+```
+
+### Daemon integration
+
+The daemon (Phase 4) automatically watches config files in addition to extension directories. Config file changes use a **30-second debounce** (vs 10s for extensions) so that adjusting three settings in the IDE UI doesn't trigger three separate syncs.
+
+Config watching activates automatically once at least one domain is enabled.
+
+---
+
 ## Safety
 
 - The daemon never applies a sync without going through Phase 3's safety rails
@@ -425,7 +582,7 @@ VSIX files are cached at `~/.ide-sync/cache/vsix/`.
 
 ```bash
 npm run dev        # Run without building (tsx)
-npm test           # Run vitest suite (138 tests)
+npm test           # Run vitest suite (180 tests)
 npm run lint       # ESLint
 npm run format     # Prettier
 npm run build      # tsup → dist/cli.js + dist/daemon.js
@@ -441,4 +598,5 @@ npm run build      # tsup → dist/cli.js + dist/daemon.js
 | 2 | Install / uninstall / replicate | ✅ Done |
 | 3 | Cloud sync — git & filesystem backends, 3-way merge | ✅ Done |
 | 4 | Background daemon — file watching, debounced auto-sync, OS service | ✅ Done |
+| 5 | Full config sync — settings, keybindings, snippets, tasks, MCP, UI state | ✅ Done |
 | 5 | Settings sync — keybindings, snippets, settings.json | Planned |

@@ -1,5 +1,7 @@
 import process from 'process';
-import { readConfig, getDaemonConfig, writeDaemonConfig } from '../config/config.js';
+import chokidar from 'chokidar';
+import path from 'path';
+import { readConfig, getDaemonConfig, writeDaemonConfig, readConfigSyncConfig } from '../config/config.js';
 import { createLogger, setLogger } from './logger.js';
 import { DebouncerRegistry } from './debouncer.js';
 import { JobQueue } from './queue.js';
@@ -10,6 +12,7 @@ import { writeDaemonPid, removeDaemonPid } from './lifecycle.js';
 import { notify } from './notifier.js';
 import { runSync } from '../commands/sync-cmd.js';
 import { runPull } from '../commands/pull.js';
+import { runDetectors } from '../detectors/index.js';
 import type { IDEFamily } from '../detectors/types.js';
 import type { IpcCommand, IpcResponse } from './ipc.js';
 
@@ -135,6 +138,58 @@ export async function runDaemon(): Promise<void> {
   );
   watcher.start();
 
+  // ── Config file watcher (Phase 5) ─────────────────────────────────
+  // Watch IDE config files (settings.json, keybindings.json, snippets/, etc.)
+  // with a longer debounce than extension changes (30s default vs 10s).
+  const configSyncCfg = readConfigSyncConfig();
+  let configWatcher: ReturnType<typeof chokidar.watch> | null = null;
+
+  if (configSyncCfg.enabledDomains.length > 0) {
+    const inventories = runDetectors();
+    const configPaths: string[] = [];
+
+    for (const inv of inventories) {
+      if (!inv.ide.installed || !inv.ide.configPath) continue;
+      const cp = inv.ide.configPath;
+      // Watch per-file and the snippets subdirectory.
+      for (const name of ['settings.json', 'keybindings.json', 'tasks.json', 'mcp.json']) {
+        configPaths.push(path.join(cp, name));
+      }
+      configPaths.push(path.join(cp, 'snippets'));
+    }
+
+    if (configPaths.length > 0) {
+      const configDebouncers = new DebouncerRegistry(
+        configSyncCfg.configDebounceMs,
+        configSyncCfg.maxConfigDebounceMs,
+        (ide: IDEFamily) => {
+          if (!queue.isPaused) {
+            queue.enqueue('local-change', ide);
+          }
+        },
+      );
+
+      configWatcher = chokidar.watch(configPaths, {
+        ignoreInitial: true,
+        awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 100 },
+      });
+
+      configWatcher.on('change', (changedPath: string) => {
+        // Map changed path back to an IDE family.
+        for (const inv of inventories) {
+          if (!inv.ide.configPath) continue;
+          if (changedPath.startsWith(inv.ide.configPath)) {
+            logger.debug({ changedPath, ide: inv.ide.family }, 'config file changed');
+            configDebouncers.event(inv.ide.family);
+            break;
+          }
+        }
+      });
+
+      logger.info({ paths: configPaths.length }, 'config file watcher started');
+    }
+  }
+
   // ── Periodic scheduler ────────────────────────────────────────────
   const scheduler = new PeriodicScheduler(
     daemonCfg.periodicPullCron,
@@ -228,6 +283,7 @@ export async function runDaemon(): Promise<void> {
     debouncers.cancelAll();
     scheduler.stop();
     clearInterval(resourceCheck);
+    if (configWatcher) await configWatcher.close();
     await queue.drainWithTimeout(30_000);
     await ipc.close();
     await watcher.stop();

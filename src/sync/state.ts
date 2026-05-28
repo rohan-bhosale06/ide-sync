@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createHash } from 'crypto';
 import type { IDEInventory } from '../detectors/types.js';
 import type { InstalledExtension, SyncState } from './types.js';
+import { emptyConfigSyncState } from '../config-sync/types.js';
 
 // ─────────────────────────── zod schema ──────────────────────────
 
@@ -27,13 +28,34 @@ const DeviceSchema = z.object({
   lastSyncedStateHash: z.string().nullable(),
 });
 
+const StoredDomainEntrySchema = z.object({
+  raw: z.string(),
+  updatedBy: z.string(),
+  updatedAt: z.string(),
+});
+
+const ConfigSyncStateSchema = z.object({
+  settings: StoredDomainEntrySchema.nullable(),
+  keybindings: StoredDomainEntrySchema.nullable(),
+  snippets: z.record(z.string(), StoredDomainEntrySchema),
+  tasks: StoredDomainEntrySchema.nullable(),
+  mcp: StoredDomainEntrySchema.nullable(),
+  uiState: z.object({
+    whitelistedKeys: z.record(z.string(), z.unknown()),
+    updatedBy: z.string(),
+    updatedAt: z.string(),
+  }).nullable(),
+}).passthrough();
+
 export const SyncStateSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   updatedAt: z.string(),
   updatedByDevice: z.string(),
   extensions: z.record(z.string(), SyncStateExtensionSchema),
   removed: z.record(z.string(), TombstoneSchema),
   devices: z.record(z.string(), DeviceSchema),
+  configs: ConfigSyncStateSchema.optional(),
+  domainOptOuts: z.record(z.string(), z.array(z.string())).optional(),
 });
 
 // ─────────────────────────── parse / migrate ─────────────────────
@@ -42,20 +64,37 @@ export function parseSyncState(raw: unknown): SyncState {
   return SyncStateSchema.parse(raw) as SyncState;
 }
 
-/** Migration hook — add a version → version branch here when schemaVersion bumps. */
+/** Migration hook — handles v1→v2 and passes v2 through as-is. */
 export function migrateSyncState(raw: unknown): SyncState {
   if (typeof raw !== 'object' || raw === null) {
     throw new Error('Invalid sync state: expected a JSON object');
   }
   const obj = raw as Record<string, unknown>;
   const version = obj['schemaVersion'];
+
   if (version === 1) {
+    // Parse as v1 (the new optional fields will be absent), then add v2 defaults.
+    const state = parseSyncState(raw);
+    return migrateV1ToV2(state);
+  }
+
+  if (version === 2) {
     return parseSyncState(raw);
   }
+
   throw new Error(
     `Unsupported schemaVersion ${String(version)}. ` +
     `Please upgrade ide-sync to read this state file.`,
   );
+}
+
+function migrateV1ToV2(state: SyncState): SyncState {
+  return {
+    ...state,
+    schemaVersion: 2,
+    configs: state.configs ?? emptyConfigSyncState(),
+    domainOptOuts: state.domainOptOuts ?? {},
+  };
 }
 
 // ─────────────────────────── helpers ─────────────────────────────
@@ -106,10 +145,10 @@ export function buildInstalledSet(inventories: IDEInventory[]): InstalledExtensi
   return Array.from(map.values());
 }
 
-/** Build an empty, valid SyncState (used to seed a fresh remote). */
+/** Build an empty, valid SyncState (v2) used to seed a fresh remote. */
 export function emptyState(deviceId: string, deviceName: string): SyncState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date().toISOString(),
     updatedByDevice: deviceId,
     extensions: {},
@@ -123,5 +162,7 @@ export function emptyState(deviceId: string, deviceName: string): SyncState {
         lastSyncedStateHash: null,
       },
     },
+    configs: emptyConfigSyncState(),
+    domainOptOuts: {},
   };
 }

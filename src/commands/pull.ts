@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import prompts from 'prompts';
 import pLimit from 'p-limit';
-import { readConfig, readLastSyncedState, writeLastSyncedState } from '../config/config.js';
+import { readConfig, readLastSyncedState, writeLastSyncedState, readConfigSyncConfig } from '../config/config.js';
 import { runDetectors, ALL_FAMILIES } from '../detectors/index.js';
 import type { IDEFamily } from '../detectors/types.js';
 import { buildInstalledSet, hashState } from '../sync/state.js';
@@ -12,6 +12,7 @@ import { createBackend } from '../sync/backends/index.js';
 import { getInstaller } from '../installers/index.js';
 import { acquireLock } from '../utils/lock.js';
 import type { LocalAction, MergePlan } from '../sync/types.js';
+import { configPull } from '../config-sync/engine.js';
 
 export interface PullOptions {
   ide?: string;
@@ -192,7 +193,26 @@ export async function runPull(opts: PullOptions = {}): Promise<PullResult> {
 
     const anyFailed = results.some((r) => !r.success);
     if (!anyFailed) {
-      const newState = applyRemotePlan(remote, plan, config.deviceId, config.deviceName);
+      let newState = applyRemotePlan(remote, plan, config.deviceId, config.deviceName);
+
+      // Phase 5: config-domain pull (if any domains enabled).
+      const configSyncCfg = readConfigSyncConfig();
+      if (configSyncCfg.enabledDomains.length > 0) {
+        const inventoriesForConfig = runDetectors(families);
+        const targetIDEs = inventoriesForConfig
+          .filter((inv) => inv.ide.installed && inv.ide.configPath)
+          .map((inv) => inv.ide);
+        if (targetIDEs.length > 0) {
+          await configPull({
+            targetIDEs,
+            cfg: configSyncCfg,
+            baseState: base,
+            remoteState: newState,
+            policy: conflictPolicy,
+          });
+        }
+      }
+
       const hash = hashState(newState);
       const stamped = stampDevice(newState, config.deviceId, config.deviceName, hash);
       writeLastSyncedState(stamped);

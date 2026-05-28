@@ -19,7 +19,10 @@
     "chokidar": "^5.0.0",
     "commander": "^12.1.0",
     "dayjs": "^1.11.20",
+    "deepmerge": "^4.3.1",
     "execa": "^9.3.1",
+    "fast-json-patch": "^3.1.1",
+    "jsonc-parser": "^3.3.1",
     "node-cron": "^4.2.1",
     "node-notifier": "^10.0.1",
     "ora": "^8.0.1",
@@ -32,6 +35,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/deepmerge": "^2.1.0",
+    "@types/fast-json-patch": "^1.0.4",
     "@types/node": "^20.14.0",
     "@types/node-cron": "^3.0.11",
     "@types/node-notifier": "^8.0.5",

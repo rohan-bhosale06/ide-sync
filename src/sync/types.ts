@@ -1,4 +1,5 @@
 import type { IDEFamily } from '../detectors/types.js';
+import type { ConfigSyncState, ConfigDomain } from '../config-sync/types.js';
 
 // ─────────────────────────── config ──────────────────────────────
 
@@ -56,12 +57,15 @@ export interface Device {
 }
 
 export interface SyncState {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   updatedAt: string;
   updatedByDevice: string;
   extensions: Record<string, SyncStateExtension>;
   removed: Record<string, TombstoneEntry>;
   devices: Record<string, Device>;
+  // v2 additions — absent on v1 states (present after migration)
+  configs?: ConfigSyncState;
+  domainOptOuts?: Partial<Record<IDEFamily, ConfigDomain[]>>;
 }
 
 // ─────────────────────────── backend ─────────────────────────────

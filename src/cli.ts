@@ -22,10 +22,21 @@ import {
   daemonUninstallCommand,
 } from './commands/daemon.js';
 import { watchCommand } from './commands/watch.js';
+import {
+  configListCommand,
+  configShowCommand,
+  configDiffCommand,
+  configReplicateCommand,
+  configEnableCommand,
+  configDisableCommand,
+  configBackupCommand,
+  configRestoreCommand,
+  configBackupsCommand,
+} from './commands/config.js';
 
 const program = new Command();
 
-program.name('ide-sync').description('Sync extensions across VS Code-family IDEs').version('0.4.0');
+program.name('ide-sync').description('Sync extensions across VS Code-family IDEs').version('0.5.0');
 
 // ── scan ──────────────────────────────────────────────────────────
 program
@@ -287,5 +298,72 @@ program
   .action((opts) => {
     watchCommand(opts).catch((err) => { console.error(err); process.exit(1); });
   });
+
+// ── config ────────────────────────────────────────────────────────
+const configCmd = program
+  .command('config')
+  .description('Manage IDE config sync (settings, keybindings, snippets, tasks, mcp, ui-state)');
+
+configCmd
+  .command('list')
+  .description('Show which domains are enabled per IDE')
+  .action(() => { configListCommand().catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('show')
+  .description('Print the captured config snapshot for a domain')
+  .option('--ide <name>', 'IDE family (vscode|cursor|windsurf|antigravity|vscodium)', 'vscode')
+  .option('--domain <name>', 'Config domain (settings|keybindings|snippets|tasks|mcp|ui-state)', 'settings')
+  .action((opts) => { configShowCommand(opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('diff')
+  .description('Show what would change when translating/merging configs')
+  .option('--from <ide>', 'Source IDE')
+  .option('--to <ide>', 'Target IDE')
+  .option('--remote', 'Show remote config state instead of local diff', false)
+  .action((opts) => { configDiffCommand(opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('replicate')
+  .description('One-shot copy of config files from one IDE to another')
+  .requiredOption('--from <ide>', 'Source IDE')
+  .requiredOption('--to <ide>', 'Target IDE (comma-separated for multiple)')
+  .option('--domain <list>', 'Comma-separated domains to replicate (default: all)')
+  .option('--dry-run', 'Show what would change without applying', false)
+  .option('-y, --yes', 'Skip confirmation', false)
+  .action((opts) => { configReplicateCommand(opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('enable <domain>')
+  .description('Enable a config domain globally, or remove an IDE-specific opt-out')
+  .option('--ide <name>', 'Only enable for this IDE (removes opt-out; domain must already be globally enabled)')
+  .action((domain: string, opts) => { configEnableCommand(domain, opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('disable <domain>')
+  .description('Disable a config domain globally, or opt out a specific IDE')
+  .option('--ide <name>', 'Only disable for this specific IDE (global setting unchanged)')
+  .action((domain: string, opts) => { configDisableCommand(domain, opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('backup')
+  .description('Snapshot all IDE config files to ~/.ide-sync/backups/ right now')
+  .action(() => { configBackupCommand().catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('restore <backup-id>')
+  .description('Restore config files from a named backup')
+  .option('--ide <name>', 'Only restore for this IDE')
+  .option('-y, --yes', 'Skip confirmation', false)
+  .action((backupId: string, opts) => { configRestoreCommand(backupId, opts).catch((err) => { console.error(err); process.exit(1); }); });
+
+configCmd
+  .command('backups')
+  .description('List all available config backups')
+  .action(() => { configBackupsCommand().catch((err) => { console.error(err); process.exit(1); }); });
+
+// Default `ide-sync config` with no subcommand → show list.
+configCmd.action(() => { configListCommand().catch((err) => { console.error(err); process.exit(1); }); });
 
 program.parse();
