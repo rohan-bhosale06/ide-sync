@@ -480,12 +480,12 @@ VS Code forks disagree on some settings keys. The translator handles three cases
 | Behavior | Example |
 |---|---|
 | **Passthrough** (default) | `editor.fontSize` — identical across all forks |
-| **Quarantine** | `cursor.*` dropped when writing to VS Code; `github.copilot.*` dropped when writing to Cursor |
+| **Quarantine** | `cursor.*` dropped when writing to VS Code; `github.copilot.*` dropped when writing to Cursor or Windsurf (both have built-in AI) |
 | **Map** | Explicit key rename for forks that renamed a shared key |
 
 Quarantined key prefixes (always dropped):
 - `cursor.*`, `windsurf.*`, `codeium.*`, `vscodium.*` — fork-specific namespaces
-- `github.copilot.*` — irrelevant in IDEs with built-in AI
+- `github.copilot.*` — dropped when writing to Cursor or Windsurf (both have built-in AI)
 - `telemetry.*`, `update.*`, `extensions.autoUpdate` — per-machine preferences
 
 To add custom translation overrides, set `translationOverrides` in `~/.ide-sync/config-sync.json`:
@@ -599,4 +599,3 @@ npm run build      # tsup → dist/cli.js + dist/daemon.js
 | 3 | Cloud sync — git & filesystem backends, 3-way merge | ✅ Done |
 | 4 | Background daemon — file watching, debounced auto-sync, OS service | ✅ Done |
 | 5 | Full config sync — settings, keybindings, snippets, tasks, MCP, UI state | ✅ Done |
-| 5 | Settings sync — keybindings, snippets, settings.json | Planned |
