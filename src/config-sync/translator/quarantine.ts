@@ -38,6 +38,11 @@ const WINDSURF_OUTBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
   /^codeium\./,
 ];
 
+/** Patterns quarantined when writing FROM any IDE TO windsurf. */
+const WINDSURF_INBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
+  /^github\.copilot\./,  // Windsurf uses Codeium built-in AI; copilot settings are meaningless
+];
+
 /** Patterns quarantined when writing FROM vscodium TO other IDEs (VSCodium-specific). */
 const VSCODIUM_OUTBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
   /^vscodium\./,
@@ -60,6 +65,7 @@ export function isQuarantined(key: string, source: IDEFamily, target: IDEFamily)
   if (source === 'cursor' && matches(key, CURSOR_OUTBOUND_QUARANTINE)) return true;
   if (target === 'cursor' && matches(key, CURSOR_INBOUND_QUARANTINE)) return true;
   if (source === 'windsurf' && matches(key, WINDSURF_OUTBOUND_QUARANTINE)) return true;
+  if (target === 'windsurf' && matches(key, WINDSURF_INBOUND_QUARANTINE)) return true;
   if (source === 'vscodium' && matches(key, VSCODIUM_OUTBOUND_QUARANTINE)) return true;
 
   return false;
