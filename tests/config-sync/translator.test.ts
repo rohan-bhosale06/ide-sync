@@ -9,6 +9,8 @@ beforeAll(async () => {
   await preloadRules('vscode', 'cursor');
   await preloadRules('cursor', 'vscode');
   await preloadRules('vscode', 'windsurf');
+  await preloadRules('vscode', 'kiro');
+  await preloadRules('kiro', 'vscode');
 });
 
 // ─────────────────────────── identity ────────────────────────────
@@ -125,6 +127,74 @@ describe('user translation overrides', () => {
     );
     expect('someKey' in result.translated).toBe(false);
     expect(result.quarantined).toContain('someKey');
+  });
+});
+
+// ─────────────────────────── quarantine — kiro→vscode ───────────
+
+describe('quarantine: kiro→vscode', () => {
+  it('drops kiro.* keys', () => {
+    const result = translateSettingsSync(
+      { 'kiro.ai.enabled': true, 'editor.fontSize': 14 },
+      'kiro', 'vscode',
+    );
+    expect(result.translated['editor.fontSize']).toBe(14);
+    expect('kiro.ai.enabled' in result.translated).toBe(false);
+    expect(result.quarantined).toContain('kiro.ai.enabled');
+  });
+
+  it('drops amazonq.* keys', () => {
+    const result = translateSettingsSync(
+      { 'amazonq.shareContentWithAWS': false, 'editor.tabSize': 2 },
+      'kiro', 'vscode',
+    );
+    expect('amazonq.shareContentWithAWS' in result.translated).toBe(false);
+    expect(result.quarantined).toContain('amazonq.shareContentWithAWS');
+    expect(result.translated['editor.tabSize']).toBe(2);
+  });
+
+  it('drops aws.* keys', () => {
+    const result = translateSettingsSync(
+      { 'aws.profile': 'default' },
+      'kiro', 'vscode',
+    );
+    expect(result.quarantined).toContain('aws.profile');
+  });
+
+  it('passes through common editor keys', () => {
+    const settings = { 'editor.fontSize': 14, 'workbench.colorTheme': 'Dark+' };
+    const result = translateSettingsSync(settings, 'kiro', 'vscode');
+    expect(result.translated).toMatchObject(settings);
+    expect(result.quarantined).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────── quarantine — vscode→kiro ────────────
+
+describe('quarantine: vscode→kiro', () => {
+  it('drops github.copilot.* keys (kiro has Amazon Q built-in AI)', () => {
+    const result = translateSettingsSync(
+      { 'github.copilot.enable': true, 'editor.fontSize': 14 },
+      'vscode', 'kiro',
+    );
+    expect('github.copilot.enable' in result.translated).toBe(false);
+    expect(result.quarantined).toContain('github.copilot.enable');
+    expect(result.translated['editor.fontSize']).toBe(14);
+  });
+
+  it('drops github.copilot.chat.* keys', () => {
+    const result = translateSettingsSync(
+      { 'github.copilot.chat.welcomeMessage': 'auto' },
+      'vscode', 'kiro',
+    );
+    expect(result.quarantined).toContain('github.copilot.chat.welcomeMessage');
+  });
+
+  it('passes through common editor keys', () => {
+    const settings = { 'editor.tabSize': 4, 'editor.formatOnSave': true };
+    const result = translateSettingsSync(settings, 'vscode', 'kiro');
+    expect(result.translated).toMatchObject(settings);
+    expect(result.quarantined).toHaveLength(0);
   });
 });
 

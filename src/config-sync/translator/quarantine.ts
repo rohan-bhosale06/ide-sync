@@ -49,6 +49,18 @@ const VSCODIUM_OUTBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
   /^workbench\.welcome\./,   // VSCodium tweaks welcome page differently
 ];
 
+/** Patterns quarantined when writing FROM kiro TO other IDEs. */
+const KIRO_OUTBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
+  /^kiro\./,       // all kiro.* namespace
+  /^amazonq\./,    // Amazon Q AI assistant settings
+  /^aws\./,        // AWS-specific integrations
+];
+
+/** Patterns quarantined when writing FROM any IDE TO kiro. */
+const KIRO_INBOUND_QUARANTINE: ReadonlyArray<string | RegExp> = [
+  /^github\.copilot\./,  // Kiro uses Amazon Q built-in AI; copilot settings are meaningless
+];
+
 import type { IDEFamily } from '../../detectors/types.js';
 
 function matches(key: string, patterns: ReadonlyArray<string | RegExp>): boolean {
@@ -67,6 +79,8 @@ export function isQuarantined(key: string, source: IDEFamily, target: IDEFamily)
   if (source === 'windsurf' && matches(key, WINDSURF_OUTBOUND_QUARANTINE)) return true;
   if (target === 'windsurf' && matches(key, WINDSURF_INBOUND_QUARANTINE)) return true;
   if (source === 'vscodium' && matches(key, VSCODIUM_OUTBOUND_QUARANTINE)) return true;
+  if (source === 'kiro' && matches(key, KIRO_OUTBOUND_QUARANTINE)) return true;
+  if (target === 'kiro' && matches(key, KIRO_INBOUND_QUARANTINE)) return true;
 
   return false;
 }

@@ -1,4 +1,4 @@
-export type IDEFamily = 'vscode' | 'cursor' | 'windsurf' | 'antigravity' | 'vscodium';
+export type IDEFamily = 'vscode' | 'cursor' | 'windsurf' | 'antigravity' | 'vscodium' | 'kiro';
 
 export interface IDEInstallation {
   family: IDEFamily;

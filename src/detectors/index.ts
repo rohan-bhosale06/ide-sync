@@ -3,6 +3,7 @@ import { detectCursor } from './cursor.js';
 import { detectWindsurf } from './windsurf.js';
 import { detectAntigravity } from './antigravity.js';
 import { detectVSCodium } from './vscodium.js';
+import { detectKiro } from './kiro.js';
 import type { IDEFamily, IDEInventory } from './types.js';
 
 export type { IDEFamily, IDEInventory };
@@ -16,9 +17,10 @@ const DETECTORS: Record<IDEFamily, DetectorFn> = {
   windsurf: detectWindsurf,
   antigravity: detectAntigravity,
   vscodium: detectVSCodium,
+  kiro: detectKiro,
 };
 
-export const ALL_FAMILIES: IDEFamily[] = ['vscode', 'cursor', 'windsurf', 'antigravity', 'vscodium'];
+export const ALL_FAMILIES: IDEFamily[] = ['vscode', 'cursor', 'windsurf', 'antigravity', 'vscodium', 'kiro'];
 
 export function runDetectors(families: IDEFamily[] = ALL_FAMILIES): IDEInventory[] {
   return families.map((family) => DETECTORS[family]());

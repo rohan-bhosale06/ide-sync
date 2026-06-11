@@ -9,6 +9,7 @@ const CLI_CANDIDATES: Record<IDEFamily, string[]> = {
   windsurf: ['windsurf'],
   antigravity: ['antigravity'],
   vscodium: ['codium'],
+  kiro: ['kiro'],
 };
 
 // macOS: fallback paths inside .app bundles when the shell integration isn't installed
@@ -18,6 +19,7 @@ const MACOS_APP_BINS: Partial<Record<IDEFamily, string>> = {
   windsurf: '/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf',
   antigravity: '/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity',
   vscodium: '/Applications/VSCodium.app/Contents/Resources/app/bin/codium',
+  kiro: '/Applications/Kiro.app/Contents/Resources/app/bin/kiro',
 };
 
 async function isOnPath(bin: string): Promise<boolean> {
@@ -50,6 +52,7 @@ export function getCliInstallHint(family: IDEFamily): string {
     windsurf: 'Open Windsurf → Command Palette → "Shell Command: Install \'windsurf\' command in PATH"',
     antigravity: 'Open Antigravity → Command Palette → "Shell Command: Install in PATH"',
     vscodium: 'Open VSCodium → Command Palette → "Shell Command: Install \'codium\' command in PATH"',
+    kiro: 'Open Kiro → Command Palette → "Shell Command: Install \'kiro\' command in PATH"',
   };
   return hints[family];
 }
