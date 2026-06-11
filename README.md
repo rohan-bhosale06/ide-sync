@@ -102,14 +102,12 @@ ide-sync daemon uninstall   # remove the service entry
 | Platform | Mechanism |
 |---|---|
 | **Windows** | Task Scheduler (`schtasks`), runs at logon, user-level |
-| macOS | launchd — not yet tested (see note below) |
-| Linux | systemd user unit — not yet tested (see note below) |
+| **macOS** | launchd (`~/Library/LaunchAgents/com.user.ide-sync.plist`) |
+| **Linux** | systemd user unit (`~/.config/systemd/user/ide-sync.service`) |
 
-**macOS (planned):** will write `~/Library/LaunchAgents/com.user.ide-sync.plist` and call `launchctl bootstrap`. `KeepAlive: { SuccessfulExit: false }` so it restarts on crash but not on clean stop.
+**macOS:** writes `~/Library/LaunchAgents/com.user.ide-sync.plist` and calls `launchctl bootstrap gui/<uid>`. `KeepAlive: { SuccessfulExit: false }` so it restarts on crash but not on clean stop. Logs to `~/.ide-sync/logs/daemon.log`.
 
-**Linux (planned):** will write `~/.config/systemd/user/ide-sync.service` and call `systemctl --user enable --now`. If you want it running without an active login session, you will need to run `loginctl enable-linger $USER` separately — the tool won't do this automatically.
-
-Running `daemon install` on macOS or Linux prints a clear "not yet tested on this platform" message with manual instructions.
+**Linux:** writes `~/.config/systemd/user/ide-sync.service` and calls `systemctl --user enable --now`. If you want it running without an active login session, run `loginctl enable-linger $USER` separately — the tool won't do this automatically.
 
 ### Foreground mode (debugging)
 
