@@ -13,6 +13,7 @@ A CLI tool to scan, compare, and sync extensions **and full IDE configuration** 
 | Windsurf | `~/.codeium/windsurf/extensions` | `windsurf` |
 | Antigravity | `~/.antigravity/extensions` | `antigravity` |
 | VSCodium | `~/.vscode-oss/extensions` | `codium` |
+| Kiro | `~/.kiro/extensions` | `kiro` |
 
 On Windows, `~` resolves to `%USERPROFILE%`.
 
@@ -404,7 +405,7 @@ VSIX files are cached at `~/.ide-sync/cache/vsix/`.
 | IDE | Default marketplace |
 |---|---|
 | VS Code | Microsoft → Open VSX fallback |
-| Cursor, Windsurf, Antigravity, VSCodium | Open VSX only (`--allow-ms-marketplace` to opt in) |
+| Cursor, Windsurf, Antigravity, VSCodium, Kiro | Open VSX only (`--allow-ms-marketplace` to opt in) |
 
 ---
 
@@ -478,12 +479,13 @@ VS Code forks disagree on some settings keys. The translator handles three cases
 | Behavior | Example |
 |---|---|
 | **Passthrough** (default) | `editor.fontSize` — identical across all forks |
-| **Quarantine** | `cursor.*` dropped when writing to VS Code; `github.copilot.*` dropped when writing to Cursor or Windsurf (both have built-in AI) |
+| **Quarantine** | `cursor.*` dropped when writing to VS Code; `github.copilot.*` dropped when writing to Cursor, Windsurf, or Kiro (all have built-in AI) |
 | **Map** | Explicit key rename for forks that renamed a shared key |
 
 Quarantined key prefixes (always dropped):
 - `cursor.*`, `windsurf.*`, `codeium.*`, `vscodium.*` — fork-specific namespaces
-- `github.copilot.*` — dropped when writing to Cursor or Windsurf (both have built-in AI)
+- `kiro.*`, `amazonq.*`, `aws.*` — Kiro / Amazon Q specific keys
+- `github.copilot.*` — dropped when writing to Cursor, Windsurf, or Kiro (all have built-in AI)
 - `telemetry.*`, `update.*`, `extensions.autoUpdate` — per-machine preferences
 
 To add custom translation overrides, set `translationOverrides` in `~/.ide-sync/config-sync.json`:
@@ -580,7 +582,7 @@ Config watching activates automatically once at least one domain is enabled.
 
 ```bash
 npm run dev        # Run without building (tsx)
-npm test           # Run vitest suite (180 tests)
+npm test           # Run vitest suite (187 tests)
 npm run lint       # ESLint
 npm run format     # Prettier
 npm run build      # tsup → dist/cli.js + dist/daemon.js
