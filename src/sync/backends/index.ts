@@ -21,5 +21,6 @@ export function createBackend(config: Config): SyncBackend {
   throw new Error(`Unknown backend: ${String((config as Config).backend)}`);
 }
 
-export { GitBackend, FilesystemBackend, PushConflictError } from './git.js';
+export { GitBackend, PushConflictError } from './git.js';
+export { FilesystemBackend } from './filesystem.js';
 export type { SyncBackend } from '../types.js';
