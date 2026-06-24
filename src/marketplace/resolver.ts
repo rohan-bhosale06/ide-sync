@@ -54,6 +54,28 @@ export async function resolveExtension(
   return null;
 }
 
+/** Search all marketplaces configured for `family`, deduped by id (first client wins). */
+export async function searchMarketplaces(
+  query: string,
+  family: IDEFamily,
+  opts: ResolverOptions & { limit?: number } = {},
+): Promise<ExtensionMetadata[]> {
+  const clients = getClientsForFamily(family, opts);
+  const results = await Promise.all(clients.map((client) => client.search(query, opts.limit)));
+
+  const seen = new Set<string>();
+  const merged: ExtensionMetadata[] = [];
+  for (const list of results) {
+    for (const ext of list) {
+      const key = ext.id.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(ext);
+    }
+  }
+  return merged;
+}
+
 // Reset singletons — used in tests
 export function resetClients(): void {
   openVsxClient = null;

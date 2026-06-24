@@ -92,6 +92,62 @@ export class MicrosoftMarketplaceClient implements MarketplaceClient {
     }
   }
 
+  async search(query: string, limit = 20): Promise<ExtensionMetadata[]> {
+    try {
+      const res = await fetch(GALLERY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json;api-version=7.2-preview.1',
+          'User-Agent': 'ide-sync/0.2.0',
+        },
+        body: JSON.stringify({
+          filters: [{
+            criteria: [{ filterType: 10, value: query }],
+            pageNumber: 1,
+            pageSize: limit,
+          }],
+          flags: FLAGS,
+        }),
+      });
+
+      if (!res.ok) return [];
+
+      const data = (await res.json()) as GalleryResponse;
+      const extensions = data.results?.[0]?.extensions ?? [];
+
+      return extensions
+        .filter((ext) => ext.versions?.length)
+        .map((ext) => {
+          const publisher = ext.publisher.publisherName;
+          const name = ext.extensionName;
+          const id = `${publisher}.${name}`;
+          const latestVersion = ext.versions[0].version;
+          const versions = ext.versions.map((v) => v.version);
+
+          const getAssetUri = (version?: string): string => {
+            const target = version
+              ? ext.versions.find((v) => v.version === version) ?? ext.versions[0]
+              : ext.versions[0];
+            return target.assetUri;
+          };
+
+          return {
+            id,
+            publisher,
+            name,
+            latestVersion,
+            versions,
+            source: 'microsoft' as const,
+            downloadUrl: (version?: string) =>
+              `${getAssetUri(version)}/Microsoft.VisualStudio.Services.VSIXPackage`,
+          };
+        });
+    } catch {
+      return [];
+    }
+  }
+
   async downloadVsix(id: string, version: string, destPath: string): Promise<void> {
     const meta = await this.getExtension(id);
     if (!meta) throw new Error(`${id} not found on Microsoft Marketplace`);

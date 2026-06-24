@@ -6,6 +6,14 @@
 import { parse, modify, applyEdits, ParseError } from 'jsonc-parser';
 import type { ConflictPolicy } from '../../sync/types.js';
 
+export interface ConfigKeyChange {
+  key: string;
+  baseValue: unknown;
+  localValue: unknown;
+  remoteValue: unknown;
+  status: 'unchanged' | 'local-only' | 'remote-only' | 'converged' | 'conflict';
+}
+
 export interface JsoncMergeResult {
   /** New text to write to the local IDE config file. */
   newLocalText: string;
@@ -13,6 +21,8 @@ export interface JsoncMergeResult {
   newRemoteRaw: string;
   /** Keys that had conflicts (both sides changed vs base). Policy was applied. */
   conflictKeys: string[];
+  /** Per-key value-level diff across base/local/remote, for diff-viewer UIs. */
+  changes: ConfigKeyChange[];
 }
 
 const FORMATTING = { tabSize: 2, insertSpaces: true, eol: '\n' };
@@ -71,6 +81,7 @@ export function mergeJsoncSettings(
   ]);
 
   const conflictKeys: string[] = [];
+  const changes: ConfigKeyChange[] = [];
   const localEdits: Array<[string, unknown | undefined]> = []; // [key, newValue|undefined=delete]
   const remoteResult: Record<string, unknown> = { ...remote };
 
@@ -88,6 +99,7 @@ export function mergeJsoncSettings(
 
     if (!localChanged && !remoteChanged) {
       // No change on either side — nothing to do.
+      changes.push({ key, baseValue: baseVal, localValue: localVal, remoteValue: remoteVal, status: 'unchanged' });
       continue;
     }
 
@@ -98,6 +110,7 @@ export function mergeJsoncSettings(
       } else {
         delete remoteResult[key];
       }
+      changes.push({ key, baseValue: baseVal, localValue: localVal, remoteValue: remoteVal, status: 'local-only' });
       continue;
     }
 
@@ -108,6 +121,7 @@ export function mergeJsoncSettings(
       } else {
         localEdits.push([key, undefined]);
       }
+      changes.push({ key, baseValue: baseVal, localValue: localVal, remoteValue: remoteVal, status: 'remote-only' });
       continue;
     }
 
@@ -116,10 +130,12 @@ export function mergeJsoncSettings(
       // Both changed to the same value — no real conflict.
       if (inLocal) remoteResult[key] = localVal;
       else delete remoteResult[key];
+      changes.push({ key, baseValue: baseVal, localValue: localVal, remoteValue: remoteVal, status: 'converged' });
       continue;
     }
 
     conflictKeys.push(key);
+    changes.push({ key, baseValue: baseVal, localValue: localVal, remoteValue: remoteVal, status: 'conflict' });
 
     let winner: unknown;
     let winnerPresent: boolean;
@@ -153,6 +169,7 @@ export function mergeJsoncSettings(
     newLocalText,
     newRemoteRaw: toCanonical(remoteResult),
     conflictKeys,
+    changes,
   };
 }
 

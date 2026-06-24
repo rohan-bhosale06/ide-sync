@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { scanCommand } from './commands/scan.js';
 import { installCommand } from './commands/install.js';
+import { searchCommand } from './commands/search.js';
 import { uninstallCommand } from './commands/uninstall.js';
 import { replicateCommand } from './commands/replicate.js';
 import { initCommand } from './commands/init.js';
@@ -9,6 +10,13 @@ import { pullCommand } from './commands/pull.js';
 import { syncCommand } from './commands/sync-cmd.js';
 import { statusCommand } from './commands/status.js';
 import { devicesListCommand, devicesRemoveCommand } from './commands/devices.js';
+import {
+  profileCreateCommand,
+  profileUpdateCommand,
+  profileDeleteCommand,
+  profileListCommand,
+  profileShowCommand,
+} from './commands/profile.js';
 import {
   daemonStartCommand,
   daemonStopCommand,
@@ -35,6 +43,22 @@ import {
 } from './commands/config.js';
 
 const program = new Command();
+
+/** Parse repeated `--resolve <id>=<keep-local|keep-remote>` flags into a manualResolutions map. */
+function parseResolveFlags(resolve?: string[]): Record<string, 'keep-local' | 'keep-remote'> | undefined {
+  if (!resolve || resolve.length === 0) return undefined;
+  const out: Record<string, 'keep-local' | 'keep-remote'> = {};
+  for (const entry of resolve) {
+    const idx = entry.indexOf('=');
+    if (idx === -1) continue;
+    const id = entry.slice(0, idx).trim();
+    const decision = entry.slice(idx + 1).trim();
+    if (decision === 'keep-local' || decision === 'keep-remote') {
+      out[id] = decision;
+    }
+  }
+  return out;
+}
 
 program.name('ide-sync').description('Sync extensions across VS Code-family IDEs').version('0.5.0');
 
@@ -63,6 +87,20 @@ program
   .option('--version <ver>', 'Pin to a specific extension version')
   .action((extensions: string[], opts) => {
     installCommand(extensions, opts).catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+  });
+
+// ── search ────────────────────────────────────────────────────────
+program
+  .command('search <query>')
+  .description('Search marketplaces configured for an IDE family')
+  .option('--ide <name>', 'Target IDE (vscode|cursor|windsurf|antigravity|vscodium)', 'vscode')
+  .option('--limit <n>', 'Max results per marketplace', (v: string) => parseInt(v, 10), 20)
+  .option('--allow-ms-marketplace', 'Also search Microsoft Marketplace for non-VS Code forks', false)
+  .action((query: string, opts) => {
+    searchCommand(query, opts).catch((err) => {
       console.error(err);
       process.exit(1);
     });
@@ -124,8 +162,10 @@ program
   .option('-y, --yes', 'Skip confirmation prompt', false)
   .option('--ide <list>', 'Comma-separated IDEs to include')
   .option('--conflict <policy>', 'Conflict resolution: newest|local|remote|manual')
+  .option('--profile <name>', 'Scope sync to a named extension profile (see `ide-sync profile`)')
+  .option('--resolve <id=decision>', 'Manual conflict decision, e.g. --resolve ms-python.python=keep-local (repeatable)', (val: string, prev: string[]) => [...(prev ?? []), val], [] as string[])
   .action((opts) => {
-    pushCommand(opts).catch((err) => {
+    pushCommand({ ...opts, manualResolutions: parseResolveFlags(opts.resolve) }).catch((err) => {
       console.error(err);
       process.exit(1);
     });
@@ -140,8 +180,10 @@ program
   .option('--ide <list>', 'Comma-separated IDEs to target')
   .option('--conflict <policy>', 'Conflict resolution: newest|local|remote|manual')
   .option('--keep-local-extensions', 'Do not uninstall local extensions even if remote removed them', false)
+  .option('--profile <name>', 'Scope sync to a named extension profile (see `ide-sync profile`)')
+  .option('--resolve <id=decision>', 'Manual conflict decision, e.g. --resolve ms-python.python=keep-local (repeatable)', (val: string, prev: string[]) => [...(prev ?? []), val], [] as string[])
   .action((opts) => {
-    pullCommand(opts).catch((err) => {
+    pullCommand({ ...opts, manualResolutions: parseResolveFlags(opts.resolve) }).catch((err) => {
       console.error(err);
       process.exit(1);
     });
@@ -156,8 +198,10 @@ program
   .option('--ide <list>', 'Comma-separated IDEs to include')
   .option('--conflict <policy>', 'Conflict resolution: newest|local|remote|manual')
   .option('--keep-local-extensions', 'Do not uninstall local extensions even if remote removed them', false)
+  .option('--profile <name>', 'Scope sync to a named extension profile (see `ide-sync profile`)')
+  .option('--resolve <id=decision>', 'Manual conflict decision, e.g. --resolve ms-python.python=keep-local (repeatable)', (val: string, prev: string[]) => [...(prev ?? []), val], [] as string[])
   .action((opts) => {
-    syncCommand(opts).catch((err) => {
+    syncCommand({ ...opts, manualResolutions: parseResolveFlags(opts.resolve) }).catch((err) => {
       console.error(err);
       process.exit(1);
     });
@@ -206,6 +250,52 @@ devicesCmd.action(() => {
     console.error(err);
     process.exit(1);
   });
+});
+
+// ── profile ───────────────────────────────────────────────────────
+const profileCmd = program
+  .command('profile')
+  .description('Manage named extension profiles for scoped sync');
+
+profileCmd
+  .command('create <name>')
+  .description('Create a new extension profile')
+  .requiredOption('--extensions <ids>', 'Comma-separated extension IDs')
+  .action((name: string, opts) => {
+    profileCreateCommand(name, opts).catch((err) => { console.error(err); process.exit(1); });
+  });
+
+profileCmd
+  .command('update <name>')
+  .description('Replace the extension list of an existing profile')
+  .requiredOption('--extensions <ids>', 'Comma-separated extension IDs')
+  .action((name: string, opts) => {
+    profileUpdateCommand(name, opts).catch((err) => { console.error(err); process.exit(1); });
+  });
+
+profileCmd
+  .command('delete <name>')
+  .description('Delete a profile')
+  .action((name: string) => {
+    profileDeleteCommand(name).catch((err) => { console.error(err); process.exit(1); });
+  });
+
+profileCmd
+  .command('list')
+  .description('List all profiles')
+  .action(() => {
+    profileListCommand().catch((err) => { console.error(err); process.exit(1); });
+  });
+
+profileCmd
+  .command('show <name>')
+  .description('Show the extension IDs in a profile')
+  .action((name: string) => {
+    profileShowCommand(name).catch((err) => { console.error(err); process.exit(1); });
+  });
+
+profileCmd.action(() => {
+  profileListCommand().catch((err) => { console.error(err); process.exit(1); });
 });
 
 // ── daemon ────────────────────────────────────────────────────────

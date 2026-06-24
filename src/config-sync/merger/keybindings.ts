@@ -5,9 +5,10 @@
  *   - ctrl+k with when="editorFocus" and ctrl+k without when are two separate entries
  *   - -command (negation) entries are treated as regular entries with their own identity
  */
-import { parse, modify, applyEdits, ParseError } from 'jsonc-parser';
+import { parse, ParseError } from 'jsonc-parser';
 import type { Keybinding } from '../types.js';
 import type { ConflictPolicy } from '../../sync/types.js';
+import type { ConfigKeyChange } from './jsonc.js';
 
 const FORMATTING = { tabSize: 2, insertSpaces: true, eol: '\n' };
 
@@ -40,6 +41,12 @@ export interface KeybindingMergeResult {
   newLocalText: string;
   newRemoteRaw: string;
   conflictKeys: string[]; // identity strings of conflicting entries
+  /** Per-entry diff across base/local/remote, keyed by identity string, for diff-viewer UIs. */
+  changes: ConfigKeyChange[];
+}
+
+function deepEqualKb(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
@@ -64,11 +71,29 @@ export function mergeKeybindings(
 
   const toAdd: Keybinding[] = [];
   const toRemoveIds = new Set<string>();
+  const changes: ConfigKeyChange[] = [];
 
   for (const id of allIds) {
     const inBase = base.has(id);
     const inLocal = local.has(id);
     const inRemote = remote.has(id);
+
+    const baseValue = base.get(id) ?? null;
+    const localValue = local.get(id) ?? null;
+    const remoteValue = remote.get(id) ?? null;
+
+    let status: ConfigKeyChange['status'];
+    if (inLocal && inRemote) {
+      const equal = deepEqualKb(localValue, remoteValue);
+      status = equal ? (inBase ? 'unchanged' : 'converged') : 'conflict';
+    } else if (inLocal && !inRemote) {
+      status = inBase ? 'remote-only' : 'local-only'; // inBase: remote removed it (remote changed); else local added it (local changed)
+    } else if (!inLocal && inRemote) {
+      status = inBase ? 'local-only' : 'remote-only'; // inBase: local removed it (local changed); else remote added it (remote changed)
+    } else {
+      status = 'unchanged';
+    }
+    changes.push({ key: id, baseValue, localValue, remoteValue, status });
 
     if (inLocal && inRemote) continue; // present on both sides — keep as-is
 
@@ -112,6 +137,7 @@ export function mergeKeybindings(
     newLocalText: JSON.stringify(merged, null, 2),
     newRemoteRaw: JSON.stringify(remoteResult, null, 2),
     conflictKeys: [],
+    changes,
   };
 }
 

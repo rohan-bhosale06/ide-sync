@@ -12,6 +12,10 @@ export interface SyncOptions {
   silent?: boolean;
   largeChangeThresholdPercent?: number;
   autoApplyLargeChanges?: boolean;
+  /** Scope sync to a named extension profile (see `src/config/profiles.ts`). */
+  profile?: string;
+  /** Per-extension manual conflict decisions; only consulted when conflict policy is 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }
 
 export interface SyncResult {
@@ -34,6 +38,8 @@ export async function runSync(opts: SyncOptions = {}): Promise<SyncResult> {
     silent: opts.silent,
     largeChangeThresholdPercent: opts.largeChangeThresholdPercent,
     autoApplyLargeChanges: opts.autoApplyLargeChanges,
+    profile: opts.profile,
+    manualResolutions: opts.manualResolutions,
   };
 
   const pullResult = await runPull(shared);
@@ -69,6 +75,8 @@ export async function syncCommand(opts: SyncOptions): Promise<void> {
     yes: opts.yes,
     conflict: opts.conflict,
     keepLocalExtensions: opts.keepLocalExtensions,
+    profile: opts.profile,
+    manualResolutions: opts.manualResolutions,
   };
 
   await pullCommand(shared);

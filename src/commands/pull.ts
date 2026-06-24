@@ -13,6 +13,7 @@ import { getInstaller } from '../installers/index.js';
 import { acquireLock } from '../utils/lock.js';
 import type { LocalAction, MergePlan } from '../sync/types.js';
 import { configPull } from '../config-sync/engine.js';
+import { resolveProfileIds } from '../config/profiles.js';
 
 export interface PullOptions {
   ide?: string;
@@ -25,6 +26,10 @@ export interface PullOptions {
   /** If set and !autoApplyLargeChanges, abort when changed% exceeds this. */
   largeChangeThresholdPercent?: number;
   autoApplyLargeChanges?: boolean;
+  /** Scope sync to a named extension profile (see `src/config/profiles.ts`). */
+  profile?: string;
+  /** Per-extension manual conflict decisions; only consulted when conflict policy is 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }
 
 export interface PullResult {
@@ -100,6 +105,8 @@ export async function runPull(opts: PullOptions = {}): Promise<PullResult> {
       deviceName: config.deviceName,
       policy: conflictPolicy,
       tombstoneGCDays: config.tombstoneGCDays,
+      profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+      manualResolutions: opts.manualResolutions,
     });
 
     if (hasUnresolvedConflicts(plan.conflicts)) {
@@ -266,6 +273,8 @@ export async function pullCommand(opts: PullOptions = {}): Promise<void> {
       deviceName: config.deviceName,
       policy: conflictPolicy,
       tombstoneGCDays: config.tombstoneGCDays,
+      profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+      manualResolutions: opts.manualResolutions,
     });
 
     if (plan.conflicts.length > 0) {

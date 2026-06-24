@@ -11,6 +11,16 @@ interface OpenVSXResponse {
   allVersions?: Record<string, string>;
 }
 
+interface OpenVSXSearchEntry {
+  namespace: string;
+  name: string;
+  version: string;
+}
+
+interface OpenVSXSearchResponse {
+  extensions?: OpenVSXSearchEntry[];
+}
+
 export class OpenVSXClient implements MarketplaceClient {
   readonly source = 'openvsx' as const;
 
@@ -59,6 +69,35 @@ export class OpenVSXClient implements MarketplaceClient {
     } catch {
       this.cache.set(id, null);
       return null;
+    }
+  }
+
+  async search(query: string, limit = 20): Promise<ExtensionMetadata[]> {
+    try {
+      const res = await fetch(`${BASE}/-/search?query=${encodeURIComponent(query)}&size=${limit}`);
+      if (!res.ok) return [];
+
+      const data = (await res.json()) as OpenVSXSearchResponse;
+      return (data.extensions ?? []).map((ext) => {
+        const id = `${ext.namespace}.${ext.name}`;
+        const publisher = ext.namespace;
+        const name = ext.name;
+        const latestVersion = ext.version;
+        return {
+          id,
+          publisher,
+          name,
+          latestVersion,
+          versions: [latestVersion],
+          source: 'openvsx' as const,
+          downloadUrl: (version?: string) => {
+            const v = version ?? latestVersion;
+            return `${BASE}/${publisher}/${name}/${v}/file/${publisher}.${name}-${v}.vsix`;
+          },
+        };
+      });
+    } catch {
+      return [];
     }
   }
 

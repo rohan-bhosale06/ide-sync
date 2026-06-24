@@ -70,6 +70,8 @@ function merge(params: {
   installed?: InstalledExtension[];
   remote?: SyncState | null;
   policy?: 'newest' | 'local' | 'remote' | 'manual';
+  profileIds?: Set<string>;
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }): MergePlan {
   return threeWayMerge({
     base: params.base ?? null,
@@ -80,6 +82,8 @@ function merge(params: {
     policy: params.policy ?? 'newest',
     tombstoneGCDays: 90,
     now: NOW,
+    profileIds: params.profileIds,
+    manualResolutions: params.manualResolutions,
   });
 }
 
@@ -653,5 +657,76 @@ describe('idempotency', () => {
       (a) => a.type === 'push-add' || a.type === 'push-remove',
     );
     expect(nonTrivial).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────── profile filtering ────────────────────
+
+describe('profileIds filtering', () => {
+  it('ignores extensions outside the profile entirely, even if base/remote disagree', () => {
+    const base = makeState([ext('ext.in'), ext('ext.out')]);
+    const remote = makeState([ext('ext.in')]); // ext.out vanished from remote w/o tombstone
+    const plan = merge({
+      base,
+      installed: [installed('ext.in'), installed('ext.out')],
+      remote,
+      profileIds: new Set(['ext.in']),
+    });
+    expect(plan.localActions.find((a) => a.extensionId === 'ext.out')).toBeUndefined();
+    expect(plan.remoteActions.find((a) => a.extensionId === 'ext.out')).toBeUndefined();
+  });
+
+  it('still reasons normally about in-profile extensions', () => {
+    const base = makeState([ext('ext.in', '1.0.0')]);
+    const remote = makeState([ext('ext.in', '2.0.0')]);
+    const plan = merge({
+      base,
+      installed: [installed('ext.in', '1.0.0')],
+      remote,
+      profileIds: new Set(['ext.in']),
+    });
+    expect(plan.localActions).toHaveLength(1);
+    expect(plan.localActions[0]).toMatchObject({ type: 'install-local', extensionId: 'ext.in' });
+  });
+
+  it('fast-path (no remote) only pushes profile-scoped extensions', () => {
+    const plan = merge({
+      installed: [installed('ext.in'), installed('ext.out')],
+      profileIds: new Set(['ext.in']),
+    });
+    expect(plan.remoteActions).toHaveLength(1);
+    expect(plan.remoteActions[0].extensionId).toBe('ext.in');
+  });
+});
+
+// ─────────────────────────── manual conflict resolutions ──────────
+
+describe('manualResolutions', () => {
+  it('resolves a version conflict using the supplied decision', () => {
+    const base = makeState([ext('ext.a', '1.0.0')]);
+    const remote = makeState([ext('ext.a', '3.0.0')]);
+    const plan = merge({
+      base,
+      installed: [installed('ext.a', '2.0.0')],
+      remote,
+      policy: 'manual',
+      manualResolutions: { 'ext.a': 'keep-local' },
+    });
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0].resolution).toBe('keep-local');
+    expect(plan.remoteActions.some((a) => a.extensionId === 'ext.a' && a.type === 'push-version-update')).toBe(true);
+  });
+
+  it('leaves resolution null when manual policy has no matching decision', () => {
+    const base = makeState([ext('ext.a', '1.0.0')]);
+    const remote = makeState([ext('ext.a', '3.0.0')]);
+    const plan = merge({
+      base,
+      installed: [installed('ext.a', '2.0.0')],
+      remote,
+      policy: 'manual',
+      manualResolutions: { 'ext.other': 'keep-local' },
+    });
+    expect(plan.conflicts[0].resolution).toBeNull();
   });
 });

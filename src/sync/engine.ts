@@ -28,6 +28,10 @@ export interface MergeInput {
   tombstoneGCDays: number;
   /** Override "now" for deterministic tests. */
   now?: Date;
+  /** If set, only extensions in this set (lowercased IDs) are reasoned about; everything else is left untouched. */
+  profileIds?: Set<string>;
+  /** Per-extension manual conflict decisions, keyed by extension ID. Only consulted when policy === 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }
 
 // ─────────────────────────── private helpers ─────────────────────
@@ -93,6 +97,8 @@ export function threeWayMerge(input: MergeInput): MergePlan {
     policy,
     tombstoneGCDays,
     now = new Date(),
+    profileIds,
+    manualResolutions,
   } = input;
 
   const nowISO = now.toISOString();
@@ -104,6 +110,7 @@ export function threeWayMerge(input: MergeInput): MergePlan {
   // Fast-path: no remote state at all (first push ever).
   if (remote === null) {
     for (const ext of installed) {
+      if (profileIds && !profileIds.has(ext.id.toLowerCase())) continue;
       remoteActions.push({
         type: 'push-add',
         extensionId: ext.id,
@@ -134,6 +141,8 @@ export function threeWayMerge(input: MergeInput): MergePlan {
   ]);
 
   for (const id of allIds) {
+    if (profileIds && !profileIds.has(id.toLowerCase())) continue;
+
     const inBase = id in baseExt;
     const inInstalled = installedMap.has(id);
     const inRemote = id in remoteExt;
@@ -215,6 +224,7 @@ export function threeWayMerge(input: MergeInput): MergePlan {
               localEntry: makeEntry(installedEntry!, deviceId, nowISO, remoteEntry),
               remoteEntry: remoteEntry!,
               policy,
+              manualResolutions,
             });
             conflicts.push(conflict);
             if (conflict.resolution === 'keep-remote') {
@@ -257,6 +267,7 @@ export function threeWayMerge(input: MergeInput): MergePlan {
             localEntry: makeEntry(installedEntry!, deviceId, nowISO),
             remoteTombstone: remoteTombstone!,
             policy,
+            manualResolutions,
           });
           conflicts.push(conflict);
           if (conflict.resolution === 'keep-local') {
@@ -344,6 +355,7 @@ export function threeWayMerge(input: MergeInput): MergePlan {
             localEntry: makeEntry(installedEntry!, deviceId, nowISO),
             remoteEntry: remoteEntry!,
             policy,
+            manualResolutions,
           });
           conflicts.push(conflict);
           if (conflict.resolution === 'keep-remote') {
@@ -370,6 +382,7 @@ export function threeWayMerge(input: MergeInput): MergePlan {
           localEntry: makeEntry(installedEntry!, deviceId, nowISO),
           remoteTombstone: remoteTombstone!,
           policy,
+          manualResolutions,
         });
         conflicts.push(conflict);
         if (conflict.resolution === 'keep-local') {

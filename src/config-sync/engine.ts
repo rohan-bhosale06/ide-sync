@@ -17,7 +17,7 @@ import type {
 import { emptyConfigSyncState } from './types.js';
 import { readConfigSnapshot, snapshotSnippetsRaw } from './reader.js';
 import { applyConfigWritePlan, type ConfigWritePlan } from './writer.js';
-import { mergeJsoncSettings } from './merger/jsonc.js';
+import { mergeJsoncSettings, type ConfigKeyChange } from './merger/jsonc.js';
 import { mergeKeybindings } from './merger/keybindings.js';
 import { mergeSnippetDirectory } from './merger/snippets.js';
 import { translateSettings } from './translator/index.js';
@@ -434,6 +434,87 @@ function diffObjects(
   }
 
   return { addedKeys, removedKeys, modifiedKeys };
+}
+
+/**
+ * Read-only preview of the value-level 3-way diff (base/local/remote) for one IDE,
+ * without writing anything to disk. Reuses the same per-domain merger calls as
+ * `configPull` — mergers are already side-effect-free; this just discards the
+ * write step and surfaces the `changes`/`fileChanges` arrays for a diff-viewer UI.
+ */
+export async function previewConfigChanges(opts: {
+  targetIDE: IDEInstallation;
+  cfg: ConfigSyncConfig;
+  baseState: SyncState | null;
+  remoteState: SyncState | null;
+  policy: ConflictPolicy;
+}): Promise<Partial<Record<ConfigDomain, ConfigKeyChange[]>>> {
+  const { targetIDE, cfg, baseState, remoteState, policy } = opts;
+  const result: Partial<Record<ConfigDomain, ConfigKeyChange[]>> = {};
+  if (!targetIDE.configPath || !targetIDE.installed) return result;
+
+  const baseConfigs = baseState?.configs ?? emptyConfigSyncState();
+  const remoteConfigs = remoteState?.configs ?? emptyConfigSyncState();
+  const localSnapshot = readConfigSnapshot(
+    targetIDE.family,
+    targetIDE.configPath,
+    cfg.enabledDomains,
+    cfg.uiStateWhitelistExtra,
+  );
+
+  if (isDomainEnabled('settings', targetIDE.family, cfg)) {
+    const merged = mergeJsoncSettings(
+      baseConfigs.settings?.raw ?? null,
+      localSnapshot.domains.settings?.raw ?? '{}',
+      remoteConfigs.settings?.raw ?? null,
+      policy,
+    );
+    result.settings = merged.changes;
+  }
+
+  if (isDomainEnabled('keybindings', targetIDE.family, cfg)) {
+    const merged = mergeKeybindings(
+      baseConfigs.keybindings?.raw ?? null,
+      localSnapshot.domains.keybindings?.raw ?? '[]',
+      remoteConfigs.keybindings?.raw ?? null,
+      policy,
+    );
+    result.keybindings = merged.changes;
+  }
+
+  if (isDomainEnabled('snippets', targetIDE.family, cfg)) {
+    const localRaw = snapshotSnippetsRaw(localSnapshot);
+    const baseRaw: Record<string, string> = {};
+    for (const [k, v] of Object.entries(baseConfigs.snippets)) baseRaw[k] = v.raw;
+    const remoteRaw: Record<string, string> = {};
+    for (const [k, v] of Object.entries(remoteConfigs.snippets)) remoteRaw[k] = v.raw;
+    const merged = mergeSnippetDirectory(baseRaw, localRaw, remoteRaw, policy);
+    result.snippets = merged.fileChanges.flatMap((fc) =>
+      fc.keyChanges ?? [{ key: fc.filename, baseValue: null, localValue: null, remoteValue: null, status: fc.status }],
+    );
+  }
+
+  if (isDomainEnabled('tasks', targetIDE.family, cfg)) {
+    const merged = mergeJsoncSettings(
+      baseConfigs.tasks?.raw ?? null,
+      localSnapshot.domains.tasks?.raw ?? '{}',
+      remoteConfigs.tasks?.raw ?? null,
+      policy,
+    );
+    result.tasks = merged.changes;
+  }
+
+  if (isDomainEnabled('mcp', targetIDE.family, cfg)) {
+    const merged = mergeJsoncSettings(
+      baseConfigs.mcp?.raw ?? null,
+      localSnapshot.domains.mcp?.raw ?? '{}',
+      remoteConfigs.mcp?.raw ?? null,
+      policy,
+    );
+    result.mcp = merged.changes;
+  }
+
+  return result;
 }
 
 // ─────────────────────────── replicate ────────────────────────────

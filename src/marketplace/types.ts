@@ -13,5 +13,6 @@ export interface ExtensionMetadata {
 export interface MarketplaceClient {
   source: MarketplaceSource;
   getExtension(id: string): Promise<ExtensionMetadata | null>;
+  search(query: string, limit?: number): Promise<ExtensionMetadata[]>;
   downloadVsix(id: string, version: string, destPath: string): Promise<void>;
 }

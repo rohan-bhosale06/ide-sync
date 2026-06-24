@@ -143,6 +143,46 @@ describe('conflict resolution', () => {
   });
 });
 
+// ─────────────────────────── changes array ─────────────────────────
+
+describe('changes array', () => {
+  it('reports unchanged for keys identical on all three sides', () => {
+    const raw = base({ a: 1 });
+    const result = mergeJsoncSettings(raw, raw, raw, 'newest');
+    expect(result.changes).toEqual([{ key: 'a', baseValue: 1, localValue: 1, remoteValue: 1, status: 'unchanged' }]);
+  });
+
+  it('reports local-only when only local changed', () => {
+    const b = base({ a: 1 });
+    const local = base({ a: 2 });
+    const result = mergeJsoncSettings(b, local, b, 'local');
+    expect(result.changes).toEqual([{ key: 'a', baseValue: 1, localValue: 2, remoteValue: 1, status: 'local-only' }]);
+  });
+
+  it('reports remote-only when only remote changed', () => {
+    const b = base({ a: 1 });
+    const remote = base({ a: 2 });
+    const result = mergeJsoncSettings(b, b, remote, 'remote');
+    expect(result.changes).toEqual([{ key: 'a', baseValue: 1, localValue: 1, remoteValue: 2, status: 'remote-only' }]);
+  });
+
+  it('reports converged when both sides changed to the same value', () => {
+    const b = base({ a: 1 });
+    const local = base({ a: 2 });
+    const remote = base({ a: 2 });
+    const result = mergeJsoncSettings(b, local, remote, 'manual');
+    expect(result.changes).toEqual([{ key: 'a', baseValue: 1, localValue: 2, remoteValue: 2, status: 'converged' }]);
+  });
+
+  it('reports conflict when both sides changed to different values', () => {
+    const b = base({ a: 1 });
+    const local = base({ a: 2 });
+    const remote = base({ a: 3 });
+    const result = mergeJsoncSettings(b, local, remote, 'remote');
+    expect(result.changes).toEqual([{ key: 'a', baseValue: 1, localValue: 2, remoteValue: 3, status: 'conflict' }]);
+  });
+});
+
 // ─────────────────────────── applyJsoncSettings ───────────────────
 
 describe('applyJsoncSettings (one-way)', () => {

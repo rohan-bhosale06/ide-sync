@@ -102,3 +102,47 @@ describe('OpenVSXClient.getExtension', () => {
     expect(meta).toBeNull();
   });
 });
+
+describe('OpenVSXClient.search', () => {
+  const SEARCH_RESPONSE = {
+    extensions: [
+      { namespace: 'dbaeumer', name: 'vscode-eslint', version: '3.0.5' },
+      { namespace: 'esbenp', name: 'prettier-vscode', version: '10.1.0' },
+    ],
+  };
+
+  it('maps search results to ExtensionMetadata', async () => {
+    mockFetch(SEARCH_RESPONSE);
+    const client = new OpenVSXClient();
+    const results = await client.search('eslint');
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ id: 'dbaeumer.vscode-eslint', publisher: 'dbaeumer', latestVersion: '3.0.5', source: 'openvsx' });
+    expect(results[0].downloadUrl()).toBe(
+      'https://open-vsx.org/api/dbaeumer/vscode-eslint/3.0.5/file/dbaeumer.vscode-eslint-3.0.5.vsix',
+    );
+  });
+
+  it('includes the query and limit in the request URL', async () => {
+    mockFetch(SEARCH_RESPONSE);
+    const client = new OpenVSXClient();
+    await client.search('eslint', 5);
+    const calledUrl = vi.mocked(fetch).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('query=eslint');
+    expect(calledUrl).toContain('size=5');
+  });
+
+  it('returns an empty array on a failed request', async () => {
+    mockFetch({}, 500);
+    const client = new OpenVSXClient();
+    const results = await client.search('eslint');
+    expect(results).toEqual([]);
+  });
+
+  it('returns an empty array on network errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+    const client = new OpenVSXClient();
+    const results = await client.search('eslint');
+    expect(results).toEqual([]);
+  });
+});

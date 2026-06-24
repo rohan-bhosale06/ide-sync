@@ -72,6 +72,35 @@ describe('negation entries (-command)', () => {
   });
 });
 
+describe('keybinding merge — changes array', () => {
+  it('reports remote-only status for an entry added remotely', () => {
+    const base = raw([KB_A]);
+    const local = raw([KB_A]);
+    const remote = raw([KB_A, KB_B]);
+    const result = mergeKeybindings(base, local, remote, 'remote');
+    const change = result.changes.find((c) => c.remoteValue && (c.remoteValue as Keybinding).command === KB_B.command);
+    expect(change?.status).toBe('remote-only');
+  });
+
+  it('reports local-only status for an entry added locally', () => {
+    const base = raw([KB_A]);
+    const local = raw([KB_A, KB_B]);
+    const remote = raw([KB_A]);
+    const result = mergeKeybindings(base, local, remote, 'local');
+    const change = result.changes.find((c) => c.localValue && (c.localValue as Keybinding).command === KB_B.command);
+    expect(change?.status).toBe('local-only');
+  });
+
+  it('reports unchanged status for an identical entry on all sides', () => {
+    const base = raw([KB_A]);
+    const local = raw([KB_A]);
+    const remote = raw([KB_A]);
+    const result = mergeKeybindings(base, local, remote, 'remote');
+    expect(result.changes).toHaveLength(1);
+    expect(result.changes[0].status).toBe('unchanged');
+  });
+});
+
 describe('applyKeybindings (one-way)', () => {
   it('adds missing entries without duplicating existing ones', () => {
     const result = applyKeybindings(raw([KB_A, KB_B]), raw([KB_A]));

@@ -15,8 +15,10 @@ export function resolveVersionConflict(opts: {
   localEntry: SyncStateExtension;
   remoteEntry: SyncStateExtension;
   policy: ConflictPolicy;
+  /** Per-extension manual decisions, keyed by extension ID. Only consulted when policy === 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }): ConflictItem {
-  const { extensionId, localVersion, remoteVersion, baseVersion, localEntry, remoteEntry, policy } = opts;
+  const { extensionId, localVersion, remoteVersion, baseVersion, localEntry, remoteEntry, policy, manualResolutions } = opts;
 
   const item: ConflictItem = {
     extensionId,
@@ -29,7 +31,10 @@ export function resolveVersionConflict(opts: {
     resolution: null,
   };
 
-  if (policy === 'manual') return item;
+  if (policy === 'manual') {
+    const decision = manualResolutions?.[extensionId];
+    return decision ? { ...item, resolution: decision } : item;
+  }
   if (policy === 'local') return { ...item, resolution: 'keep-local' };
   if (policy === 'remote') return { ...item, resolution: 'keep-remote' };
 
@@ -50,8 +55,10 @@ export function resolveResurrectionConflict(opts: {
   localEntry: SyncStateExtension;
   remoteTombstone: TombstoneEntry;
   policy: ConflictPolicy;
+  /** Per-extension manual decisions, keyed by extension ID. Only consulted when policy === 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }): ConflictItem {
-  const { extensionId, localEntry, remoteTombstone, policy } = opts;
+  const { extensionId, localEntry, remoteTombstone, policy, manualResolutions } = opts;
 
   const item: ConflictItem = {
     extensionId,
@@ -61,7 +68,10 @@ export function resolveResurrectionConflict(opts: {
     resolution: null,
   };
 
-  if (policy === 'manual') return item;
+  if (policy === 'manual') {
+    const decision = manualResolutions?.[extensionId];
+    return decision ? { ...item, resolution: decision } : item;
+  }
   if (policy === 'local') return { ...item, resolution: 'keep-local' };
   if (policy === 'remote') return { ...item, resolution: 'keep-remote' };
 

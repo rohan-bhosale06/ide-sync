@@ -20,8 +20,9 @@ import { runDetectors, ALL_FAMILIES } from '../detectors/index.js';
 import type { IDEFamily } from '../detectors/types.js';
 import { ALL_CONFIG_DOMAINS, type ConfigDomain } from '../config-sync/types.js';
 import { readConfigSnapshot } from '../config-sync/reader.js';
-import { configDiff, configReplicate } from '../config-sync/engine.js';
-import { listBackups, restoreBackup, backupFiles } from '../config-sync/backup.js';
+import { configDiff, configReplicate, previewConfigChanges } from '../config-sync/engine.js';
+import { backupFiles } from '../config-sync/backup.js';
+import { runListBackups, runRestoreBackup } from './backups.js';
 import { createBackend } from '../sync/backends/index.js';
 import path from 'path';
 import fs from 'fs';
@@ -138,19 +139,46 @@ export async function configDiffCommand(opts: { from?: string; to?: string; remo
       return;
     }
 
-    console.log('');
-    console.log(chalk.bold('  Remote config state'));
-    console.log(`  ${RULE}`);
-    for (const domain of ALL_CONFIG_DOMAINS) {
-      const entry = remoteState.configs[domain === 'ui-state' ? 'uiState' :
-        domain === 'keybindings' ? 'keybindings' :
-        domain as keyof typeof remoteState.configs];
-      const hasEntry = entry !== null && entry !== undefined;
-      const label = hasEntry ? chalk.green('present') : chalk.dim('empty');
-      const updatedBy = hasEntry && 'updatedBy' in (entry as object) ? ` (by ${(entry as { updatedBy: string }).updatedBy})` : '';
-      console.log(`  ${domain.padEnd(14)} ${label}${chalk.dim(updatedBy)}`);
+    const family = (opts.from ?? 'vscode') as IDEFamily;
+    const inv = inventories.find((i) => i.ide.family === family);
+    if (!inv?.ide.installed || !inv.ide.configPath) {
+      console.error(chalk.red(`  IDE '${family}' not found.`));
+      process.exit(1);
     }
-    console.log(`  ${RULE}`);
+
+    const baseState = readLastSyncedState();
+    const changesByDomain = await previewConfigChanges({
+      targetIDE: inv.ide,
+      cfg,
+      baseState,
+      remoteState,
+      policy: mainConfig.conflictPolicy,
+    });
+
+    const anyChanges = Object.values(changesByDomain).some((changes) =>
+      changes?.some((c) => c.status !== 'unchanged'),
+    );
+
+    if (!anyChanges) {
+      console.log(chalk.green(`\n  ${family} is already in sync with remote for all enabled domains.\n`));
+      return;
+    }
+
+    console.log('');
+    console.log(chalk.bold(`  Local (${family}) ↔ remote diff`));
+    for (const [domain, changes] of Object.entries(changesByDomain)) {
+      const nonTrivial = (changes ?? []).filter((c) => c.status !== 'unchanged');
+      if (nonTrivial.length === 0) continue;
+      console.log(`\n  ${chalk.bold(domain)}`);
+      console.log(`  ${RULE}`);
+      for (const c of nonTrivial) {
+        const marker = c.status === 'conflict' ? chalk.red('!')
+          : c.status === 'local-only' ? chalk.green('+')
+          : c.status === 'remote-only' ? chalk.yellow('~')
+          : chalk.cyan('=');
+        console.log(`  ${marker} ${c.key}  ${chalk.dim(`local=${JSON.stringify(c.localValue)} remote=${JSON.stringify(c.remoteValue)} (${c.status})`)}`);
+      }
+    }
     console.log('');
     return;
   }
@@ -320,17 +348,11 @@ export async function configRestoreCommand(backupId: string, opts: { ide?: strin
   }
 
   for (const family of families) {
-    const inv = inventories.find((i) => i.ide.family === family);
-    if (!inv?.ide.configPath) {
-      console.log(chalk.yellow(`  Skipping ${family}: config path unknown.`));
-      continue;
-    }
-
-    try {
-      const restored = restoreBackup(backupId, family, inv.ide.configPath);
-      console.log(chalk.green(`  ✓ ${family}: restored ${restored.length} file(s)`));
-    } catch (err) {
-      console.log(chalk.red(`  ✗ ${family}: ${err instanceof Error ? err.message : String(err)}`));
+    const result = runRestoreBackup({ backupId, ide: family });
+    if (result.ok) {
+      console.log(chalk.green(`  ✓ ${family}: restored ${result.restored.length} file(s)`));
+    } else {
+      console.log(chalk.red(`  ✗ ${family}: ${result.error}`));
     }
   }
   console.log('');
@@ -339,7 +361,7 @@ export async function configRestoreCommand(backupId: string, opts: { ide?: strin
 // ─────────────────────────── backups list ────────────────────────
 
 export async function configBackupsCommand(): Promise<void> {
-  const backups = listBackups();
+  const backups = runListBackups();
 
   if (backups.length === 0) {
     console.log(chalk.dim('\n  No backups found. Run `ide-sync config backup` to create one.\n'));
@@ -351,7 +373,7 @@ export async function configBackupsCommand(): Promise<void> {
   console.log(`  ${RULE}`);
 
   for (const backup of backups) {
-    const age = Math.round((Date.now() - backup.createdAt.getTime()) / 60000);
+    const age = Math.round((Date.now() - new Date(backup.createdAt).getTime()) / 60000);
     const ageStr = age < 60 ? `${age}m ago` : age < 1440 ? `${Math.round(age / 60)}h ago` : `${Math.round(age / 1440)}d ago`;
     console.log(`  ${chalk.cyan(backup.id.slice(0, 20))}…  ${chalk.dim(ageStr)}  IDEs: ${backup.ides.join(', ')}`);
   }

@@ -10,6 +10,7 @@ import { createBackend, PushConflictError } from '../sync/backends/index.js';
 import { acquireLock } from '../utils/lock.js';
 import type { MergePlan } from '../sync/types.js';
 import { configPush } from '../config-sync/engine.js';
+import { resolveProfileIds } from '../config/profiles.js';
 
 export interface PushOptions {
   ide?: string;
@@ -19,6 +20,10 @@ export interface PushOptions {
   silent?: boolean;
   largeChangeThresholdPercent?: number;
   autoApplyLargeChanges?: boolean;
+  /** Scope sync to a named extension profile (see `src/config/profiles.ts`). */
+  profile?: string;
+  /** Per-extension manual conflict decisions; only consulted when conflict policy is 'manual'. */
+  manualResolutions?: Record<string, 'keep-local' | 'keep-remote'>;
 }
 
 export interface PushResult {
@@ -58,6 +63,8 @@ export async function runPush(opts: PushOptions = {}): Promise<PushResult> {
       deviceName: config.deviceName,
       policy: conflictPolicy,
       tombstoneGCDays: config.tombstoneGCDays,
+      profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+      manualResolutions: opts.manualResolutions,
     });
 
     if (hasUnresolvedConflicts(plan.conflicts)) {
@@ -130,6 +137,8 @@ export async function runPush(opts: PushOptions = {}): Promise<PushResult> {
           deviceName: config.deviceName,
           policy: conflictPolicy,
           tombstoneGCDays: config.tombstoneGCDays,
+          profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+          manualResolutions: opts.manualResolutions,
         });
         const retryState = applyRemotePlan(freshRemote, retryPlan, config.deviceId, config.deviceName);
         const retryHash = hashState(retryState);
@@ -184,6 +193,8 @@ export async function pushCommand(opts: PushOptions = {}): Promise<void> {
       deviceName: config.deviceName,
       policy: conflictPolicy,
       tombstoneGCDays: config.tombstoneGCDays,
+      profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+      manualResolutions: opts.manualResolutions,
     });
 
     if (plan.conflicts.length > 0) {
@@ -255,6 +266,8 @@ export async function pushCommand(opts: PushOptions = {}): Promise<void> {
           deviceName: config.deviceName,
           policy: conflictPolicy,
           tombstoneGCDays: config.tombstoneGCDays,
+          profileIds: opts.profile ? resolveProfileIds(opts.profile) : undefined,
+          manualResolutions: opts.manualResolutions,
         });
         const retryState = applyRemotePlan(freshRemote, retryPlan, config.deviceId, config.deviceName);
         const retryHash = hashState(retryState);
