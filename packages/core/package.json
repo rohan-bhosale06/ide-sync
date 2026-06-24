@@ -1,0 +1,28 @@
+{
+  "name": "ide-sync-core",
+  "version": "0.5.0",
+  "description": "Engine for ide-sync: detection, sync, config-sync, marketplace (no CLI/stdio)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "execa": "^9.3.1",
+    "jsonc-parser": "^3.3.1",
+    "simple-git": "^3.36.0",
+    "zod": "^4.4.3"
+  }
+}
