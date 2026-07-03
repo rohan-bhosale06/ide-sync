@@ -1,10 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import prompts from 'prompts';
-import { configExists, readConfig, writeConfig } from 'ide-sync-core';
-import { createDevice } from 'ide-sync-core';
-import { createBackend } from 'ide-sync-core';
-import type { Config, ConflictPolicy } from 'ide-sync-core';
+import { configExists, readConfig, createDevice, runInit } from 'ide-sync-core';
 
 export interface InitOptions {
   backend?: string;
@@ -88,14 +85,11 @@ export async function initCommand(opts: InitOptions): Promise<void> {
   const existing = configExists() ? readConfig() : null;
   const deviceDefaults = createDevice(opts.device);
   let deviceName: string;
-  let deviceId: string;
 
   if (opts.device) {
     deviceName = opts.device;
-    deviceId = existing?.deviceId ?? deviceDefaults.id;
   } else if (opts.yes) {
     deviceName = deviceDefaults.name;
-    deviceId = existing?.deviceId ?? deviceDefaults.id;
   } else {
     const { name } = await prompts({
       type: 'text',
@@ -104,41 +98,29 @@ export async function initCommand(opts: InitOptions): Promise<void> {
       initial: existing?.deviceName ?? deviceDefaults.name,
     });
     deviceName = name as string;
-    deviceId = existing?.deviceId ?? deviceDefaults.id;
   }
 
-  // ── 3. Write config ───────────────────────────────────────────────
-  const config: Config = {
-    deviceId,
-    deviceName,
+  // ── 3. Initialise backend + write config ──────────────────────────
+  const spinner = ora('Initialising backend…').start();
+  const result = await runInit({
     backend,
     gitRepoUrl,
     filesystemPath,
-    conflictPolicy: existing?.conflictPolicy ?? 'newest',
-    tombstoneGCDays: existing?.tombstoneGCDays ?? 90,
-  };
+    deviceName,
+    conflictPolicy: existing?.conflictPolicy,
+    tombstoneGCDays: existing?.tombstoneGCDays,
+  });
 
-  writeConfig(config);
-  console.log(`  ${chalk.green('✓')} Config written`);
-
-  // ── 4. Initialise backend ─────────────────────────────────────────
-  const backendInst = createBackend(config);
-  const spinner = ora('Initialising backend…').start();
-
-  try {
-    await backendInst.init();
-    spinner.succeed('Backend initialised');
-  } catch (err) {
+  if (!result.ok) {
     spinner.fail('Backend init failed');
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(chalk.red(`  ${msg}`));
+    console.error(chalk.red(`  ${result.error}`));
     process.exit(1);
   }
+  spinner.succeed('Backend initialised');
+  console.log(`  ${chalk.green('✓')} Config written`);
 
-  // ── 5. Offer first push ───────────────────────────────────────────
-  const remoteState = await backendInst.readState().catch(() => null);
-
-  if (remoteState === null && !opts.yes) {
+  // ── 4. Offer first push ───────────────────────────────────────────
+  if (result.remoteEmpty && !opts.yes) {
     console.log('');
     const { seed } = await prompts({
       type: 'confirm',

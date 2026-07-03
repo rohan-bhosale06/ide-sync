@@ -1,8 +1,18 @@
 # ide-sync
 
-A CLI tool to scan, compare, and sync extensions **and full IDE configuration** across VS Code-family IDEs — locally and across multiple machines, with a background daemon that makes it fully automatic.
+A tool to scan, compare, and sync extensions **and full IDE configuration** across VS Code-family IDEs — locally and across multiple machines, with a background daemon that makes it fully automatic. Available as a CLI and as a desktop app.
 
 **Phase 5 of 5 complete** — settings, keybindings, snippets, tasks, MCP config, and UI state sync with comment-preserving 3-way merge, fork-translation engine, and automatic backup.
+
+## Project structure
+
+npm workspaces monorepo:
+
+| Package | What |
+|---|---|
+| `packages/core` | Sync engine, detectors, installers, marketplace, config-sync — no CLI/process concerns. Exposes headless `runX()` functions. |
+| `packages/cli` | The `ide-sync` CLI binary + background daemon, built on `core`. |
+| `apps/desktop` | Electron desktop app (onboarding wizard, dashboard, conflict resolution, profiles, marketplace search, settings diff, backups, system tray), built on `core`. |
 
 ## Supported IDEs
 
@@ -20,18 +30,30 @@ On Windows, `~` resolves to `%USERPROFILE%`.
 ## Install
 
 ```bash
-npm install
-npm run build
+npm install            # installs all workspaces (core, cli, desktop)
+npm run build          # builds packages/core then packages/cli
 
-# Run directly
-node dist/cli.js scan
+# Run the CLI directly
+node packages/cli/dist/cli.js scan
 
 # Or link globally
-npm link
+npm link --workspace ide-sync
 ide-sync scan
 ```
 
 Requires Node 20+.
+
+## Desktop app
+
+A GUI alternative to the CLI, built on the same core engine — guided first-run setup, a sync dashboard, visual conflict resolution, profiles, marketplace search, a settings diff viewer, backup/restore, and a system tray icon.
+
+```bash
+cd apps/desktop
+npm run dev      # launch in dev mode (electron-vite)
+npm run build    # production build → apps/desktop/out
+```
+
+No separate setup needed — it shares `~/.ide-sync` with the CLI, so either interface can be used interchangeably on the same machine.
 
 ---
 
@@ -581,11 +603,15 @@ Config watching activates automatically once at least one domain is enabled.
 ## Development
 
 ```bash
-npm run dev        # Run without building (tsx)
-npm test           # Run vitest suite (187 tests)
-npm run lint       # ESLint
-npm run format     # Prettier
-npm run build      # tsup → dist/cli.js + dist/daemon.js
+# From the repo root (core + cli)
+npm run dev --workspace ide-sync   # run the CLI without building (tsx)
+npm test                           # vitest suite, all workspaces (218 tests)
+npm run lint                       # ESLint
+npm run format                     # Prettier
+npm run build                      # tsup → packages/{core,cli}/dist
+
+# Desktop app
+cd apps/desktop && npm run dev     # electron-vite dev server + Electron
 ```
 
 ---
@@ -599,3 +625,4 @@ npm run build      # tsup → dist/cli.js + dist/daemon.js
 | 3 | Cloud sync — git & filesystem backends, 3-way merge | ✅ Done |
 | 4 | Background daemon — file watching, debounced auto-sync, OS service | ✅ Done |
 | 5 | Full config sync — settings, keybindings, snippets, tasks, MCP, UI state | ✅ Done |
+| 6 | Desktop app — Electron GUI: onboarding, dashboard, conflict resolution, profiles, marketplace search, settings diff, backups, tray | ✅ Done (installer packaging deferred) |

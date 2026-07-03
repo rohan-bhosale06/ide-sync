@@ -1,15 +1,9 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { readConfig, readLastSyncedState } from 'ide-sync-core';
-import { runDetectors, ALL_FAMILIES } from 'ide-sync-core';
-import type { IDEFamily } from 'ide-sync-core';
-import { buildInstalledSet } from 'ide-sync-core';
-import { threeWayMerge } from 'ide-sync-core';
-import { createBackend } from 'ide-sync-core';
+import { readConfig, runStatus } from 'ide-sync-core';
+import type { StatusOptions } from 'ide-sync-core';
 
-export interface StatusOptions {
-  ide?: string;
-}
+export type { StatusOptions };
 
 function ago(isoDate: string): string {
   const ms = Date.now() - new Date(isoDate).getTime();
@@ -26,11 +20,6 @@ const RULE = '─'.repeat(54);
 export async function statusCommand(opts: StatusOptions = {}): Promise<void> {
   const config = readConfig();
 
-  const families: IDEFamily[] =
-    opts.ide
-      ? opts.ide.split(',').map((s) => s.trim() as IDEFamily)
-      : ALL_FAMILIES;
-
   console.log('');
   console.log(`  ${chalk.bold('Sync Status')}`);
   console.log(`  ${RULE}`);
@@ -38,63 +27,31 @@ export async function statusCommand(opts: StatusOptions = {}): Promise<void> {
   console.log(`  Backend:  ${config.backend}${config.backend === 'git' ? chalk.dim(` (${config.gitRepoUrl ?? ''})`) : chalk.dim(` (${config.filesystemPath ?? ''})`)}`);
   console.log(`  Policy:   ${config.conflictPolicy}`);
 
-  const base = readLastSyncedState();
-  if (base) {
-    const dev = base.devices[config.deviceId];
-    const ts = dev?.lastSyncedAt;
-    if (ts) {
-      console.log(`  Last sync: ${new Date(ts).toLocaleString()}  ${chalk.dim(`(${ago(ts)})`)}`);
-    } else {
-      console.log(`  Last sync: ${chalk.dim('never')}`);
-    }
+  const spinner = ora('Fetching remote state…').start();
+  const result = await runStatus(opts);
+  spinner.stop();
+
+  if (result.lastSyncedAt) {
+    console.log(`  Last sync: ${new Date(result.lastSyncedAt).toLocaleString()}  ${chalk.dim(`(${ago(result.lastSyncedAt)})`)}`);
   } else {
     console.log(`  Last sync: ${chalk.dim('never')}`);
   }
 
   console.log('');
 
-  // ── Fetch remote ───────────────────────────────────────────────────
-  const backend = createBackend(config);
-  const fetchSpinner = ora('Fetching remote state…').start();
-  let remote;
-  try {
-    remote = await backend.readState();
-    fetchSpinner.succeed('Remote state fetched');
-  } catch (err) {
-    fetchSpinner.fail('Failed to fetch remote state');
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(chalk.red(`  ${msg}\n`));
+  if (!result.remoteReachable) {
+    console.error(chalk.red(`  ${result.error}\n`));
     return;
   }
 
-  if (remote === null) {
+  if (result.remoteEmpty) {
     console.log(chalk.yellow('  Remote is empty — run `ide-sync push` to seed it.\n'));
     return;
   }
 
-  // ── Scan local ─────────────────────────────────────────────────────
-  const scanSpinner = ora('Scanning local IDEs…').start();
-  const inventories = runDetectors(families);
-  const installed = buildInstalledSet(inventories);
-  scanSpinner.stop();
-
-  // ── Compute drift (read-only merge) ────────────────────────────────
-  const plan = threeWayMerge({
-    base,
-    installed,
-    remote,
-    deviceId: config.deviceId,
-    deviceName: config.deviceName,
-    policy: config.conflictPolicy,
-    tombstoneGCDays: config.tombstoneGCDays,
-  });
-
-  const toPush = plan.remoteActions;
-  const toPull = plan.localActions;
-  const conflicts = plan.conflicts;
+  const { toPush, toPull, conflicts } = result;
 
   console.log(`  ${RULE}`);
-  console.log(`  Remote: ${Object.keys(remote.extensions).length} extensions   Local: ${installed.length} extensions`);
   console.log('');
 
   if (toPush.length === 0 && toPull.length === 0 && conflicts.length === 0) {
@@ -123,7 +80,7 @@ export async function statusCommand(opts: StatusOptions = {}): Promise<void> {
   }
 
   // ── Remote devices ────────────────────────────────────────────────
-  const deviceList = Object.values(remote.devices);
+  const deviceList = result.devices;
   if (deviceList.length > 1) {
     console.log('');
     console.log(`  ${RULE}`);

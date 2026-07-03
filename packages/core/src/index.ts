@@ -39,6 +39,17 @@ export * from './reconcile/differ.js';
 export * from './manifest/builder.js';
 export * from './manifest/writer.js';
 
+// ── operations (headless runX functions — no CLI/stdio, structured results) ──
+export * from './operations/init.js';
+export * from './operations/status.js';
+export * from './operations/install.js';
+export * from './operations/push.js';
+export * from './operations/pull.js';
+
+// ── daemon (process lifecycle + IPC client — no CLI/stdio) ──
+export * from './daemon/lifecycle.js';
+export * from './daemon/client.js';
+
 // ── platform (OS service install: launchd/systemd/windows) ──
 export * from './platform/service.js';
 export * from './platform/launchd.js';
