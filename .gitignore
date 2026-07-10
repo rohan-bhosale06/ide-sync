@@ -1,4 +1,21 @@
 node_modules/
 dist/
+dist-package/
 *.log
 .env
+.env.*
+
+# build outputs
+apps/desktop/out/
+apps/desktop/.vite/
+packages/*/dist/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ide-sync runtime state (never ship a user's own sync config)
+.ide-sync/
+
