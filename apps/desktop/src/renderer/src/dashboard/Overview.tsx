@@ -4,6 +4,13 @@ import ConflictResolver from './ConflictResolver.js';
 
 type SyncKind = 'sync' | 'push' | 'pull';
 
+interface IdeStat {
+  family: string;
+  displayName: string;
+  installed: boolean;
+  extensionCount: number;
+}
+
 function timeAgo(iso: string | null): string {
   if (!iso) return 'never';
   const ms = Date.now() - new Date(iso).getTime();
@@ -17,6 +24,7 @@ function timeAgo(iso: string | null): string {
 
 export default function Overview() {
   const [status, setStatus] = useState<StatusResult | null>(null);
+  const [ideStats, setIdeStats] = useState<IdeStat[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [confirming, setConfirming] = useState<SyncKind | null>(null);
@@ -30,6 +38,7 @@ export default function Overview() {
       .status()
       .then((s: StatusResult) => setStatus(s))
       .catch((err: Error) => setError(err.message));
+    window.ideSync.setup.ideStats().then((stats: IdeStat[]) => setIdeStats(stats));
   };
 
   useEffect(load, []);
@@ -74,6 +83,15 @@ export default function Overview() {
           : await window.ideSync.sync.pull({});
     setBusy(false);
     setConfirming(null);
+
+    // A conflict that appeared since the screen loaded: refresh and open the resolver.
+    const skipped = kind === 'sync' ? (result.pull?.skipped ?? result.push?.skipped) : result.skipped;
+    if (skipped === 'unresolved-conflicts') {
+      const fresh: StatusResult = await window.ideSync.sync.status();
+      setStatus(fresh);
+      setResolving(true);
+      return;
+    }
 
     const failed = kind === 'sync' ? (!result.pull?.ok || !result.push?.ok) : !result.ok;
     if (failed) {
@@ -122,10 +140,29 @@ export default function Overview() {
         )}
       </div>
 
+      {ideStats.length > 0 && (
+        <div className="ide-grid">
+          {ideStats.map((ide) => (
+            <div key={ide.family} className={`ide-card ${ide.installed ? '' : 'ide-card-absent'}`}>
+              <div className="ide-card-name">{ide.displayName}</div>
+              {ide.installed ? (
+                <div className="ide-card-count">
+                  <span className="ide-card-number">{ide.extensionCount}</span>
+                  <span className="dim"> extension{ide.extensionCount !== 1 ? 's' : ''}</span>
+                </div>
+              ) : (
+                <div className="ide-card-count dim">Not installed</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="overview-actions">
         <button className="btn-primary" onClick={() => startAction('sync')} disabled={busy}>
           Sync now
         </button>
+        <button className="btn-secondary" onClick={load} disabled={busy}>Refresh</button>
         <button className="btn-secondary" onClick={() => setShowMore((v) => !v)}>More</button>
       </div>
 

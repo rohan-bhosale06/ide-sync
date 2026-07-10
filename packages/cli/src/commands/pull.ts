@@ -139,6 +139,14 @@ export async function pullCommand(opts: PullOptions = {}): Promise<void> {
       console.log('');
     }
 
+    // Per-family view of what's actually installed — only target IDEs where
+    // the action changes something (mirrors runPull's targeting in core).
+    const installedByFamily = new Map<IDEFamily, Map<string, string>>();
+    for (const inv of inventories) {
+      if (!inv.ide.installed) continue;
+      installedByFamily.set(inv.ide.family, new Map(inv.extensions.map((e) => [e.id.toLowerCase(), e.version])));
+    }
+
     const limit = pLimit(1);
     type Result = { action: LocalAction; success: boolean; error?: string };
     const results: Result[] = [];
@@ -146,8 +154,17 @@ export async function pullCommand(opts: PullOptions = {}): Promise<void> {
     await Promise.all(
       localActions.map((action) =>
         limit(async () => {
-          const targetFamilies =
+          const candidates =
             action.families?.filter((f) => families.includes(f)) ?? families;
+          const extId = action.extensionId.toLowerCase();
+
+          const targetFamilies = candidates.filter((f) => {
+            const inv = installedByFamily.get(f);
+            if (!inv) return false;
+            if (action.type === 'uninstall-local') return inv.has(extId);
+            const current = inv.get(extId);
+            return current === undefined || (action.desiredVersion !== undefined && current !== action.desiredVersion);
+          });
 
           if (targetFamilies.length === 0) {
             results.push({ action, success: true });

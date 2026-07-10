@@ -122,11 +122,11 @@ describe('BaseInstaller.uninstall', () => {
 
   it('returns failure on non-zero exit', async () => {
     vi.mocked(detectCli).mockResolvedValue('cursor');
-    vi.mocked(execa).mockResolvedValue(makeExecaResult(1, 'not installed') as never);
+    vi.mocked(execa).mockResolvedValue(makeExecaResult(1, 'permission denied') as never);
     const inst = new TestInstaller();
     const result = await inst.uninstall('pub.ext');
     expect(result.success).toBe(false);
-    expect(result.error).toBe('not installed');
+    expect(result.error).toBe('permission denied');
   });
 
   it('returns error when CLI unavailable', async () => {
@@ -135,5 +135,30 @@ describe('BaseInstaller.uninstall', () => {
     const result = await inst.uninstall('pub.ext');
     expect(result.success).toBe(false);
     expect(result.method).toBe('manual');
+  });
+
+  it('treats "is not installed" as a successful no-op', async () => {
+    vi.mocked(detectCli).mockResolvedValue('cursor');
+    vi.mocked(execa).mockResolvedValue(
+      makeExecaResult(1, "Extension 'pub.ext' is not installed. Make sure you use the full extension ID.") as never,
+    );
+    const inst = new TestInstaller();
+    const result = await inst.uninstall('pub.ext');
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('strips node deprecation noise from error output', async () => {
+    vi.mocked(detectCli).mockResolvedValue('cursor');
+    vi.mocked(execa).mockResolvedValue(
+      makeExecaResult(
+        1,
+        '(node:9156) [DEP0040] DeprecationWarning: The `punycode` module is deprecated.\nSomething actually went wrong',
+      ) as never,
+    );
+    const inst = new TestInstaller();
+    const result = await inst.uninstall('pub.ext');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Something actually went wrong');
   });
 });

@@ -34,7 +34,7 @@ function DaemonPill() {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onRerunSetup }: { onRerunSetup: () => void }) {
   const [screen, setScreen] = useState<Screen>('overview');
 
   return (
@@ -68,7 +68,7 @@ export default function Dashboard() {
         {screen === 'search' && <Search />}
         {screen === 'diff' && <SettingsDiff />}
         {screen === 'backups' && <Backups />}
-        {screen === 'settings' && <Settings />}
+        {screen === 'settings' && <Settings onRerunSetup={onRerunSetup} />}
       </main>
     </div>
   );

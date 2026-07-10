@@ -63,8 +63,15 @@ export function createTray(getWindow: () => BrowserWindow | null, onQuit: () => 
 
   const syncNow = async () => {
     if (!configExists()) return;
-    await runPull({});
-    await runPush({});
+    const pull = await runPull({});
+    const push = pull.ok ? await runPush({}) : null;
+    if (!pull.ok || (push && !push.ok)) {
+      const detail =
+        pull.skipped === 'unresolved-conflicts'
+          ? 'Conflicts need your decision — open ide-sync to resolve them.'
+          : (pull.error ?? push?.error ?? 'Sync failed — open ide-sync for details.');
+      new Notification({ title: 'ide-sync', body: detail }).show();
+    }
     await refresh();
   };
 

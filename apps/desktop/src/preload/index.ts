@@ -9,6 +9,7 @@ const ideSync = {
     pickFolder: () => ipcRenderer.invoke('setup:pickFolder'),
     hostname: () => ipcRenderer.invoke('setup:hostname'),
     installedExtensions: () => ipcRenderer.invoke('setup:installedExtensions'),
+    ideStats: () => ipcRenderer.invoke('setup:ideStats'),
   },
   sync: {
     status: (opts?: unknown) => ipcRenderer.invoke('sync:status', opts),

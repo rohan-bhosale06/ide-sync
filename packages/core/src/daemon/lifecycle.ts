@@ -39,12 +39,16 @@ export function isDaemonAlive(): boolean {
   return isProcessAlive(pid);
 }
 
-/** Spawn the daemon as a detached background process running `daemonScript`. */
-export function spawnDaemon(daemonScript: string): void {
+/**
+ * Spawn the daemon as a detached background process running `daemonScript`.
+ * `extraEnv` lets callers whose execPath is not plain Node (e.g. Electron,
+ * which needs ELECTRON_RUN_AS_NODE=1) make the child run as a Node process.
+ */
+export function spawnDaemon(daemonScript: string, extraEnv: Record<string, string> = {}): void {
   const child = spawn(process.execPath, [daemonScript], {
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, IDE_SYNC_DAEMON: '1' },
+    env: { ...process.env, IDE_SYNC_DAEMON: '1', ...extraEnv },
   });
 
   child.unref();

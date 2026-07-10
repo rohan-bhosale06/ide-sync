@@ -4,6 +4,7 @@
  * (background sync). No business logic lives here.
  */
 import { ipcMain, dialog } from 'electron';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -46,6 +47,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('setup:test', (_e, opts: TestConnectionOptions) => testBackendConnection(opts));
   ipcMain.handle('setup:init', (_e, opts: RunInitOptions) => runInit(opts));
   ipcMain.handle('setup:detectIdes', () => runDetectors(ALL_FAMILIES).map((inv) => inv.ide));
+  ipcMain.handle('setup:ideStats', () =>
+    runDetectors(ALL_FAMILIES).map((inv) => ({
+      family: inv.ide.family,
+      displayName: inv.ide.displayName,
+      installed: inv.ide.installed,
+      extensionCount: inv.extensions.length,
+    })),
+  );
   ipcMain.handle('setup:hostname', () => os.hostname());
   ipcMain.handle('setup:installedExtensions', () => {
     const seen = new Map<string, { id: string; displayName: string; publisher: string }>();
@@ -122,11 +131,20 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('daemon:resume', () => sendIpcCommand({ cmd: 'resume' }));
   ipcMain.handle('daemon:start', () => {
     if (isDaemonAlive()) return { ok: true };
-    // Dev-time monorepo layout: apps/desktop/out/main -> packages/cli/dist/daemon.js.
-    // TODO: resolve via the packaged ide-sync-cli location once electron-builder packaging lands.
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const daemonScript = path.resolve(currentDir, '../../../../packages/cli/dist/daemon.js');
-    spawnDaemon(daemonScript);
+    // Packaged app ships daemon.js next to out/ (resources/app/daemon.js);
+    // dev falls back to the monorepo's CLI build output.
+    const candidates = [
+      path.resolve(currentDir, '../../daemon.js'),
+      path.resolve(currentDir, '../../../../packages/cli/dist/daemon.js'),
+    ];
+    const daemonScript = candidates.find((p) => fs.existsSync(p));
+    if (!daemonScript) {
+      return { ok: false, error: 'Background sync engine not found in this installation.' };
+    }
+    // process.execPath is Electron here, not Node — ELECTRON_RUN_AS_NODE makes
+    // the spawned child behave as a plain Node process running daemon.js.
+    spawnDaemon(daemonScript, { ELECTRON_RUN_AS_NODE: '1' });
     return { ok: true };
   });
   ipcMain.handle('daemon:stop', () => ({ ok: stopDaemon() }));

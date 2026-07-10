@@ -6,6 +6,15 @@ import { resolveExtension } from '../marketplace/resolver.js';
 import { downloadVsixToCache } from '../marketplace/vsix.js';
 import type { ResolverOptions } from '../marketplace/resolver.js';
 
+/** Strip Node/Electron runtime noise (deprecation warnings etc.) from CLI stderr. */
+function cleanCliError(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !/DeprecationWarning|--trace-deprecation|^\(node:\d+\)/.test(line))
+    .join('\n')
+    .trim();
+}
+
 export abstract class BaseInstaller implements Installer {
   abstract readonly family: IDEFamily;
 
@@ -85,7 +94,7 @@ export abstract class BaseInstaller implements Installer {
       return {
         extensionId: id,
         success: result.exitCode === 0,
-        error: result.exitCode !== 0 ? (result.stderr || result.stdout) : undefined,
+        error: result.exitCode !== 0 ? cleanCliError(result.stderr || result.stdout) : undefined,
         method: 'vsix',
       };
     } catch (err) {
@@ -111,10 +120,16 @@ export abstract class BaseInstaller implements Installer {
 
     try {
       const result = await execa(cli, ['--uninstall-extension', extensionId], { reject: false });
+      const output = `${result.stderr}\n${result.stdout}`;
+      // Uninstalling an extension that isn't installed is a no-op, not a failure —
+      // the sync goal (extension absent) is already met.
+      if (result.exitCode !== 0 && /is not installed/i.test(output)) {
+        return { extensionId, success: true, method: 'cli' };
+      }
       return {
         extensionId,
         success: result.exitCode === 0,
-        error: result.exitCode !== 0 ? (result.stderr || result.stdout) : undefined,
+        error: result.exitCode !== 0 ? cleanCliError(result.stderr || result.stdout) : undefined,
         method: 'cli',
       };
     } catch (err) {

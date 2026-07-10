@@ -17,7 +17,7 @@ const DOMAINS: { id: ConfigDomain; label: string }[] = [
   { id: 'ui-state', label: 'UI state' },
 ];
 
-export default function Settings() {
+export default function Settings({ onRerunSetup }: { onRerunSetup: () => void }) {
   const [config, setConfig] = useState<Config | null>(null);
   const [enabledDomains, setEnabledDomains] = useState<Set<ConfigDomain>>(new Set());
   const [daemonRunning, setDaemonRunning] = useState<boolean | null>(null);
@@ -78,8 +78,12 @@ export default function Settings() {
     setBusy(true);
     setError(null);
     try {
-      if (daemonRunning) await window.ideSync.daemon.stop();
-      else await window.ideSync.daemon.start();
+      if (daemonRunning) {
+        await window.ideSync.daemon.stop();
+      } else {
+        const result = await window.ideSync.daemon.start();
+        if (!result.ok) setError(result.error ?? 'Could not start background sync.');
+      }
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -112,7 +116,7 @@ export default function Settings() {
         <p className="dim">
           {config.backend === 'git' ? `Git repository — ${config.gitRepoUrl}` : `Local folder — ${config.filesystemPath}`}
         </p>
-        <p className="dim">To change the sync store, run setup again from a fresh install.</p>
+        <button className="btn-secondary" onClick={onRerunSetup}>Change sync store…</button>
       </section>
 
       <section className="settings-section">

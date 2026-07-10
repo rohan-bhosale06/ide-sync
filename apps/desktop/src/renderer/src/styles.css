@@ -268,6 +268,43 @@ body {
   align-items: flex-start;
 }
 
+.ide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.ide-card {
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid light-dark(#e0e0e0, #3a3a3a);
+  background: light-dark(#fafafa, #252525);
+}
+
+.ide-card-absent {
+  opacity: 0.45;
+}
+
+.ide-card-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ide-card-count {
+  font-size: 0.85rem;
+}
+
+.ide-card-number {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;

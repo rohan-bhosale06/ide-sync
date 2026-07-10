@@ -36,5 +36,5 @@ export default function App() {
     return <Wizard onComplete={() => setView('dashboard')} />;
   }
 
-  return <Dashboard />;
+  return <Dashboard onRerunSetup={() => setView('onboarding')} />;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { IDEInstallation } from 'ide-sync-core';
 import { SUPPORTED_IDE_NAMES, type WizardState } from './types.js';
 
@@ -103,9 +103,13 @@ function StorageStep({
   const canContinue =
     state.backend === 'git' ? state.gitRepoUrl.trim().length > 0 : state.filesystemPath.trim().length > 0;
 
+  // Any change to the storage choice invalidates a previously passed connection
+  // test — the user must retest before proceeding.
+  const update = (patch: Partial<WizardState>) => setState({ ...state, ...patch, testPassed: false });
+
   const pickFolder = async () => {
     const folder = await window.ideSync.setup.pickFolder();
-    if (folder) setState({ ...state, filesystemPath: folder });
+    if (folder) update({ filesystemPath: folder });
   };
 
   return (
@@ -114,14 +118,14 @@ function StorageStep({
       <div className="storage-cards">
         <button
           className={`storage-card ${state.backend === 'git' ? 'selected' : ''}`}
-          onClick={() => setState({ ...state, backend: 'git' })}
+          onClick={() => update({ backend: 'git' })}
         >
           <h3>Git repository</h3>
           <p className="dim">Recommended — a repo you own. No servers, full history.</p>
         </button>
         <button
           className={`storage-card ${state.backend === 'filesystem' ? 'selected' : ''}`}
-          onClick={() => setState({ ...state, backend: 'filesystem' })}
+          onClick={() => update({ backend: 'filesystem' })}
         >
           <h3>Local folder</h3>
           <p className="dim">A folder synced by Dropbox, iCloud, or Syncthing.</p>
@@ -135,7 +139,7 @@ function StorageStep({
             id="repo-url"
             placeholder="git@github.com:you/ide-sync-state.git"
             value={state.gitRepoUrl}
-            onChange={(e) => setState({ ...state, gitRepoUrl: e.target.value })}
+            onChange={(e) => update({ gitRepoUrl: e.target.value })}
           />
         </div>
       ) : (
@@ -144,9 +148,9 @@ function StorageStep({
           <div className="field-row">
             <input
               id="folder-path"
-              placeholder="/Users/you/Dropbox/ide-sync"
+              placeholder="Path to a Dropbox / iCloud / Syncthing folder"
               value={state.filesystemPath}
-              onChange={(e) => setState({ ...state, filesystemPath: e.target.value })}
+              onChange={(e) => update({ filesystemPath: e.target.value })}
             />
             <button className="btn-secondary" onClick={pickFolder}>Choose…</button>
           </div>
@@ -272,8 +276,13 @@ function SeedStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remoteEmpty, setRemoteEmpty] = useState<boolean | null>(null);
+  const initStarted = useRef(false);
 
   useEffect(() => {
+    // Guard against React StrictMode's double effect invocation — runInit
+    // clones the git repo / writes config and must not fire twice.
+    if (initStarted.current) return;
+    initStarted.current = true;
     (async () => {
       setBusy(true);
       const result = await window.ideSync.setup.init({
