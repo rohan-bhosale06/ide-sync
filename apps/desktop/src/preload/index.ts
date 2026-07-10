@@ -13,6 +13,7 @@ const ideSync = {
   },
   sync: {
     status: (opts?: unknown) => ipcRenderer.invoke('sync:status', opts),
+    preview: (opts?: unknown) => ipcRenderer.invoke('sync:preview', opts),
     pull: (opts?: unknown) => ipcRenderer.invoke('sync:pull', opts),
     push: (opts?: unknown) => ipcRenderer.invoke('sync:push', opts),
     sync: (opts?: unknown) => ipcRenderer.invoke('sync:sync', opts),

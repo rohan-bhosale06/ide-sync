@@ -11,6 +11,19 @@ interface IdeStat {
   extensionCount: number;
 }
 
+interface SyncPreview {
+  ok: boolean;
+  error?: string;
+  uploads: { id: string; type: 'add' | 'remove' }[];
+  perIde: {
+    family: string;
+    displayName: string;
+    installs: { id: string; version?: string }[];
+    uninstalls: { id: string }[];
+  }[];
+  conflicts: number;
+}
+
 function timeAgo(iso: string | null): string {
   if (!iso) return 'never';
   const ms = Date.now() - new Date(iso).getTime();
@@ -31,6 +44,9 @@ export default function Overview() {
   const [resolving, setResolving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedIdes, setSelectedIdes] = useState<string[]>([]);
+  const [preview, setPreview] = useState<SyncPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const load = () => {
     setError(null);
@@ -72,15 +88,34 @@ export default function Overview() {
   const hasUnresolvedConflicts = status.conflicts.length > 0 && status.conflictPolicy === 'manual';
   const changeCount = status.toPush.length + status.toPull.length;
 
+  const loadPreview = (families: string[]) => {
+    setPreviewLoading(true);
+    window.ideSync.sync
+      .preview({ ide: families.join(',') })
+      .then((p: SyncPreview) => setPreview(p))
+      .catch((err: Error) => setPreview({ ok: false, error: err.message, uploads: [], perIde: [], conflicts: 0 }))
+      .finally(() => setPreviewLoading(false));
+  };
+
+  const toggleIde = (family: string) => {
+    const next = selectedIdes.includes(family)
+      ? selectedIdes.filter((f) => f !== family)
+      : [...selectedIdes, family];
+    setSelectedIdes(next);
+    if (next.length > 0) loadPreview(next);
+    else setPreview(null);
+  };
+
   const runAction = async (kind: SyncKind) => {
     setBusy(true);
     setActionError(null);
+    const opts = { ide: selectedIdes.join(',') };
     const result =
       kind === 'sync'
-        ? await window.ideSync.sync.sync({})
+        ? await window.ideSync.sync.sync(opts)
         : kind === 'push'
-          ? await window.ideSync.sync.push({})
-          : await window.ideSync.sync.pull({});
+          ? await window.ideSync.sync.push(opts)
+          : await window.ideSync.sync.pull(opts);
     setBusy(false);
     setConfirming(null);
 
@@ -106,7 +141,11 @@ export default function Overview() {
       setResolving(true);
       return;
     }
+    const installedFamilies = ideStats.filter((s) => s.installed).map((s) => s.family);
+    setSelectedIdes(installedFamilies);
+    setPreview(null);
     setConfirming(kind);
+    loadPreview(installedFamilies);
   };
 
   return (
@@ -185,22 +224,100 @@ export default function Overview() {
 
       {confirming && (
         <div className="modal-overlay">
-          <div className="modal">
+          <div className="modal modal-wide">
             <h3>
               {confirming === 'sync' && 'Sync now?'}
               {confirming === 'push' && "Push this computer's setup?"}
               {confirming === 'pull' && 'Pull the shared setup?'}
             </h3>
-            {confirming !== 'pull' && status.toPush.length > 0 && (
-              <p>{status.toPush.length} change{status.toPush.length === 1 ? '' : 's'} will be uploaded.</p>
-            )}
-            {confirming !== 'push' && status.toPull.length > 0 && (
-              <p>{status.toPull.length} extension{status.toPull.length === 1 ? '' : 's'} will be installed or removed on this computer.</p>
-            )}
-            {status.toPush.length === 0 && status.toPull.length === 0 && <p className="dim">No changes detected.</p>}
+
+            <div className="preview-ide-picker">
+              <p className="dim">Sync these editors:</p>
+              <div className="preview-ide-checks">
+                {ideStats.filter((s) => s.installed).map((s) => (
+                  <label key={s.family} className="preview-ide-check">
+                    <input
+                      type="checkbox"
+                      checked={selectedIdes.includes(s.family)}
+                      onChange={() => toggleIde(s.family)}
+                      disabled={busy}
+                    />
+                    {s.displayName}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="preview-body">
+              {selectedIdes.length === 0 ? (
+                <p className="dim">Select at least one editor to sync.</p>
+              ) : previewLoading || !preview ? (
+                <p className="dim">Working out what would change…</p>
+              ) : !preview.ok ? (
+                <p className="dim">Couldn't compute the plan: {preview.error}</p>
+              ) : (
+                <>
+                  {confirming !== 'pull' && preview.uploads.length > 0 && (
+                    <div className="preview-section">
+                      <p className="preview-section-title">
+                        Upload to sync store ({preview.uploads.length})
+                      </p>
+                      <ul className="preview-list">
+                        {preview.uploads.map((u) => (
+                          <li key={`${u.type}-${u.id}`}>
+                            <span className={u.type === 'remove' ? 'preview-remove' : 'preview-add'}>
+                              {u.type === 'remove' ? '−' : '+'}
+                            </span>{' '}
+                            {u.id}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {confirming !== 'push' &&
+                    preview.perIde
+                      .filter((p) => selectedIdes.includes(p.family))
+                      .filter((p) => p.installs.length > 0 || p.uninstalls.length > 0)
+                      .map((p) => (
+                        <div key={p.family} className="preview-section">
+                          <p className="preview-section-title">
+                            {p.displayName} — {p.installs.length > 0 && `${p.installs.length} to install`}
+                            {p.installs.length > 0 && p.uninstalls.length > 0 && ', '}
+                            {p.uninstalls.length > 0 && `${p.uninstalls.length} to remove`}
+                          </p>
+                          <ul className="preview-list">
+                            {p.installs.map((x) => (
+                              <li key={`i-${x.id}`}>
+                                <span className="preview-add">+</span> {x.id}
+                                {x.version && <span className="dim">@{x.version}</span>}
+                              </li>
+                            ))}
+                            {p.uninstalls.map((x) => (
+                              <li key={`u-${x.id}`}>
+                                <span className="preview-remove">−</span> {x.id}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+
+                  {(confirming === 'pull' || preview.uploads.length === 0) &&
+                    (confirming === 'push' ||
+                      !preview.perIde.some(
+                        (p) => selectedIdes.includes(p.family) && (p.installs.length > 0 || p.uninstalls.length > 0),
+                      )) && <p className="dim">Nothing to change for the selected editors.</p>}
+                </>
+              )}
+            </div>
+
             <div className="wizard-actions">
               <button className="btn-secondary" onClick={() => setConfirming(null)} disabled={busy}>Cancel</button>
-              <button className="btn-primary" onClick={() => runAction(confirming)} disabled={busy}>
+              <button
+                className="btn-primary"
+                onClick={() => runAction(confirming)}
+                disabled={busy || previewLoading || selectedIdes.length === 0}
+              >
                 {busy ? 'Working…' : 'Confirm'}
               </button>
             </div>

@@ -74,6 +74,57 @@ export function registerIpcHandlers(): void {
 
   // ── sync ───────────────────────────────────────────────────────────
   ipcMain.handle('sync:status', (_e, opts) => runStatus(opts));
+  // Detailed dry-run preview for the confirm dialog: which extensions change
+  // on which IDE (mirrors runPull's per-family targeting) plus what gets uploaded.
+  ipcMain.handle('sync:preview', async (_e, opts: { ide?: string }) => {
+    const families: IDEFamily[] = opts?.ide
+      ? (opts.ide.split(',').map((s) => s.trim()) as IDEFamily[])
+      : [...ALL_FAMILIES];
+    const status = await runStatus({ ide: families.join(',') });
+    if (!status.remoteReachable) {
+      return { ok: false, error: status.error ?? 'Sync store unreachable' };
+    }
+
+    const inventories = runDetectors(families);
+    const installedByFamily = new Map<IDEFamily, Map<string, string>>();
+    const displayNames = new Map<IDEFamily, string>();
+    for (const inv of inventories) {
+      if (!inv.ide.installed) continue;
+      displayNames.set(inv.ide.family, inv.ide.displayName);
+      installedByFamily.set(inv.ide.family, new Map(inv.extensions.map((x) => [x.id.toLowerCase(), x.version])));
+    }
+
+    const perIde = Array.from(installedByFamily.keys()).map((family) => ({
+      family,
+      displayName: displayNames.get(family) ?? family,
+      installs: [] as { id: string; version?: string }[],
+      uninstalls: [] as { id: string }[],
+    }));
+
+    for (const action of status.toPull) {
+      const candidates = action.families?.filter((f) => installedByFamily.has(f)) ?? Array.from(installedByFamily.keys());
+      const extId = action.extensionId.toLowerCase();
+      for (const family of candidates) {
+        const inv = installedByFamily.get(family)!;
+        const target = perIde.find((p) => p.family === family)!;
+        if (action.type === 'uninstall-local') {
+          if (inv.has(extId)) target.uninstalls.push({ id: action.extensionId });
+        } else {
+          const current = inv.get(extId);
+          if (current === undefined || (action.desiredVersion !== undefined && current !== action.desiredVersion)) {
+            target.installs.push({ id: action.extensionId, version: action.desiredVersion });
+          }
+        }
+      }
+    }
+
+    const uploads = status.toPush.map((a) => ({
+      id: a.extensionId,
+      type: a.type === 'push-remove' ? ('remove' as const) : ('add' as const),
+    }));
+
+    return { ok: true, uploads, perIde, conflicts: status.conflicts.length };
+  });
   ipcMain.handle('sync:pull', (_e, opts: PullOptions) => runPull(opts));
   ipcMain.handle('sync:push', (_e, opts: PushOptions) => runPush(opts));
   ipcMain.handle('sync:sync', async (_e, opts: PushOptions & PullOptions) => {
